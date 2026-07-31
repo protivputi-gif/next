@@ -25,6 +25,7 @@
         .status-failed { background: #fee2e2; color: #991b1b; }
         .loading { animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        #model-check-result { border: 2px solid transparent; transition: all 0.3s ease; }
     </style>
 </head>
 <body>
@@ -38,7 +39,9 @@
         <input type="text" id="agent-model" placeholder="Модель (напр. llama3, gpt-4, meta/llama3-70b-instruct)">
         <input type="text" id="agent-url" placeholder="Base URL (http://localhost:11434 или https://integrate.api.nvidia.com/v1)">
         <input type="password" id="agent-key" placeholder="API Key (пусто для локальных)">
-        <button onclick="addAgent()">Создать Агента</button>
+        <button onclick="addAgent()" id="add-agent-btn">Создать Агента</button>
+        
+        <div id="model-check-result" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
 
         <h3>Активные агенты:</h3>
         <ul id="agents-ul" class="agent-list"></ul>
@@ -87,6 +90,17 @@
         };
 
         if(!data.name || !data.model) { alert('Заполните имя и модель'); return; }
+        
+        const btn = document.getElementById('add-agent-btn');
+        const resultDiv = document.getElementById('model-check-result');
+        
+        // Показываем индикатор проверки
+        btn.disabled = true;
+        btn.textContent = 'Проверка модели...';
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = '#eff6ff';
+        resultDiv.style.color = '#1e40af';
+        resultDiv.innerHTML = '🔍 Проверка доступности модели...';
 
         const res = await fetch('/api/agents', {
             method: 'POST',
@@ -95,13 +109,26 @@
         });
 
         if(res.ok) {
-            alert('Агент добавлен!');
+            const responseData = await res.json();
+            resultDiv.style.background = '#d1fae5';
+            resultDiv.style.color = '#065f46';
+            resultDiv.innerHTML = `✅ <strong>Агент добавлен!</strong><br>${responseData.model_check || 'Модель доступна'}`;
             document.getElementById('agent-name').value = '';
             loadAgents();
         } else {
             const err = await res.json();
-            alert('Ошибка: ' + err.error);
+            resultDiv.style.background = '#fee2e2';
+            resultDiv.style.color = '#991b1b';
+            resultDiv.innerHTML = `❌ <strong>Ошибка:</strong> ${err.details || err.error}<br><small>${err.suggestion || ''}</small>`;
         }
+        
+        btn.disabled = false;
+        btn.textContent = 'Создать Агента';
+        
+        // Скрываем сообщение через 10 секунд
+        setTimeout(() => {
+            resultDiv.style.display = 'none';
+        }, 10000);
     }
 
     async function loadAgents() {
