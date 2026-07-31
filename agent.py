@@ -667,6 +667,58 @@ class Agent:
         self.api_key = api_key
         self.world_model = global_world_model
 
+    @staticmethod
+    async def check_model_availability(model: str, base_url: str, api_key: str = "") -> Dict[str, Any]:
+        """Проверяет доступность модели на указанном сервере."""
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        
+        # Сначала пробуем получить список доступных моделей
+        models_url = f"{base_url.rstrip('/')}/v1/models"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(models_url, headers=headers, timeout=10) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        available_models = [m.get('id', '') for m in data.get('data', [])]
+                        if model in available_models or any(model in m for m in available_models):
+                            return {"available": True, "message": f"Модель '{model}' доступна"}
+                        # Если точного совпадения нет, пробуем сделать тестовый запрос
+                        logger.info(f"[MODEL_CHECK] Модель '{model}' не найдена в списке, пробуем тестовый запрос...")
+                    else:
+                        logger.warning(f"[MODEL_CHECK] Не удалось получить список моделей: статус {resp.status}")
+        except Exception as e:
+            logger.warning(f"[MODEL_CHECK] Ошибка при получении списка моделей: {e}")
+        
+        # Тестовый запрос к API completions для проверки доступности модели
+        test_url = f"{base_url.rstrip('/')}/v1/chat/completions"
+        test_payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 1,
+            "stream": False
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(test_url, json=test_payload, headers=headers, timeout=10) as resp:
+                    if resp.status == 200:
+                        return {"available": True, "message": f"Модель '{model}' доступна и отвечает"}
+                    elif resp.status == 404:
+                        return {"available": False, "message": f"Модель '{model}' не найдена на сервере"}
+                    elif resp.status == 401:
+                        return {"available": False, "message": "Неверный API ключ или отсутствует авторизация"}
+                    elif resp.status == 503:
+                        return {"available": False, "message": f"Модель '{model}' временно недоступна (сервер перегружен)"}
+                    else:
+                        error_text = await resp.text()
+                        return {"available": False, "message": f"Ошибка API {resp.status}: {error_text[:200]}"}
+        except asyncio.TimeoutError:
+            return {"available": False, "message": "Таймаут подключения к серверу моделей"}
+        except Exception as e:
+            return {"available": False, "message": f"Ошибка подключения: {str(e)}"}
+
     async def think_and_simulate(self, task, context):
         """Этап рефлексии: Tree of Thoughts + виртуальная симуляция."""
         logger.info(f"[{self.name}] 🌳 Запуск Tree of Thoughts для задачи: {task[:50]}...")
@@ -887,7 +939,7 @@ def index():
         return f.read()
 
 @app.route('/api/agents', methods=['POST'])
-def add_agent():
+async def add_agent():
     data = request.json
     name = data.get('name')
     role = data.get('role')
@@ -898,11 +950,29 @@ def add_agent():
     if not all([name, role, model, base_url]):
         return jsonify({"error": "Missing fields"}), 400
 
+    # Проверка доступности модели перед добавлением агента
+    logger.info(f"[AGENT_ADD] Проверка доступности модели '{model}' на сервере '{base_url}'...")
+    availability = await Agent.check_model_availability(model, base_url, api_key)
+    
+    if not availability.get('available'):
+        logger.warning(f"[AGENT_ADD] Модель недоступна: {availability.get('message')}")
+        return jsonify({
+            "error": "Model not available",
+            "details": availability.get('message'),
+            "suggestion": "Проверьте название модели, URL сервера и API ключ"
+        }), 400
+    
+    logger.info(f"[AGENT_ADD] Модель доступна: {availability.get('message')}")
+
     agent = Agent(name, role, model, base_url, api_key)
     agents_registry[name] = agent
     # Обновляем оркестратор
     orchestrator.agents = agents_registry
-    return jsonify({"status": "success", "message": f"Agent {name} added"})
+    return jsonify({
+        "status": "success", 
+        "message": f"Agent {name} added",
+        "model_check": availability.get('message')
+    })
 
 @app.route('/api/agents', methods=['GET'])
 def list_agents():
