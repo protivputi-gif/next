@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus - Автономная Мультиагентная Система</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --success: #10b981; --danger: #ef4444; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        input, select, textarea, button { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        button.secondary { background: #64748b; }
+        .agent-list { list-style: none; padding: 0; }
+        .agent-item { background: #eff6ff; padding: 10px; margin: 5px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--primary); }
+        .log-area { background: #1e293b; color: #10b981; padding: 15px; border-radius: 8px; height: 400px; overflow-y: auto; font-family: 'Consolas', monospace; white-space: pre-wrap; font-size: 0.9em; }
+        .full-width { grid-column: 1 / -1; }
+        #memory-display { font-size: 0.9em; color: #64748b; max-height: 200px; overflow-y: auto; background: #f1f5f9; padding: 10px; border-radius: 6px; }
+        .lesson-badge { background: var(--success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
+        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+        .status-done { background: #d1fae5; color: #065f46; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+        .loading { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Добавление агента -->
+    <div class="card">
+        <h2>🤖 Добавить Агента</h2>
+        <input type="text" id="agent-name" placeholder="Имя (напр. Coder, AndroidBuilder)">
+        <input type="text" id="agent-role" placeholder="Роль (напр. Пишет код на Python/Java)">
+        <input type="text" id="agent-model" placeholder="Модель (напр. llama3, gpt-4, meta/llama3-70b-instruct)">
+        <input type="text" id="agent-url" placeholder="Base URL (http://localhost:11434 или https://integrate.api.nvidia.com/v1)">
+        <input type="password" id="agent-key" placeholder="API Key (пусто для локальных)">
+        <button onclick="addAgent()">Создать Агента</button>
+
+        <h3>Активные агенты:</h3>
+        <ul id="agents-ul" class="agent-list"></ul>
+    </div>
+
+    <!-- Запуск задачи -->
+    <div class="card">
+        <h2>⚡ Запуск Задачи</h2>
+        <p style="font-size: 0.9em; color: #64748b;">Система сама построит граф выполнения, проведет рефлексию и выполнит задачи.</p>
+        <textarea id="task-input" rows="4" placeholder="Опишите сложную задачу (напр. 'Создай Android приложение с кнопкой, собери его и проверь логи')..."></textarea>
+
+        <!-- Загрузка файлов для мультимодальности -->
+        <div style="border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center;"
+             ondrop="handleDrop(event)" ondragover="event.preventDefault()">
+            <p style="margin: 0 0 10px 0; color: #64748b;">📎 Перетащите изображение сюда или нажмите для выбора</p>
+            <input type="file" id="file-input" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+            <button type="button" class="secondary" onclick="document.getElementById('file-input').click()" style="width: auto;">Выбрать файл</button>
+            <div id="file-preview" style="margin-top: 10px; font-size: 0.9em; color: var(--primary);"></div>
+        </div>
+
+        <button onclick="runTask()" id="run-btn">Выполнить автономно</button>
+    </div>
+
+    <!-- Логи и Результаты -->
+    <div class="card full-width">
+        <h2>📝 Результаты выполнения графа</h2>
+        <div id="output" class="log-area">Ожидание задач...</div>
+    </div>
+
+    <!-- Память и Уроки -->
+    <div class="card full-width">
+        <h2>🧠 Память и Опыт системы</h2>
+        <div id="memory-display">Память пуста. Система начнет обучаться после первых задач.</div>
+        <button class="secondary" onclick="loadMemory()" style="width: auto; margin-top: 10px;">Обновить память</button>
+    </div>
+</div>
+
+<script>
+    async function addAgent() {
+        const data = {
+            name: document.getElementById('agent-name').value,
+            role: document.getElementById('agent-role').value,
+            model: document.getElementById('agent-model').value,
+            base_url: document.getElementById('agent-url').value,
+            api_key: document.getElementById('agent-key').value
+        };
+
+        if(!data.name || !data.model) { alert('Заполните имя и модель'); return; }
+
+        const res = await fetch('/api/agents', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if(res.ok) {
+            alert('Агент добавлен!');
+            document.getElementById('agent-name').value = '';
+            loadAgents();
+        } else {
+            const err = await res.json();
+            alert('Ошибка: ' + err.error);
+        }
+    }
+
+    async function loadAgents() {
+        const res = await fetch('/api/agents');
+        const agents = await res.json();
+        const ul = document.getElementById('agents-ul');
+
+        ul.innerHTML = '';
+        if(agents.length === 0) {
+            ul.innerHTML = '<li style="color:#94a3b8; padding:10px;">Нет активных агентов. Добавьте первого!</li>';
+            return;
+        }
+
+        agents.forEach(name => {
+            ul.innerHTML += `<li class="agent-item"><span><strong>${name}</strong></span> <span class="status-badge status-done">Active</span></li>`;
+        });
+    }
+
+    async function runTask() {
+        const task = document.getElementById('task-input').value;
+        const output = document.getElementById('output');
+        const btn = document.getElementById('run-btn');
+        const fileInput = document.getElementById('file-input');
+
+        if(!task) { alert('Введите задачу'); return; }
+
+        output.textContent = "🔄 Система строит граф задач, проводит рефлексию...\n";
+        output.classList.add('loading');
+        btn.disabled = true;
+        btn.textContent = "Выполнение...";
+
+        // Обработка изображения
+        let imageData = null;
+        if (currentBase64Image) {
+            imageData = currentBase64Image;
+        }
+
+        try {
+            const res = await fetch('/api/run', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ task, image_data: imageData })
+            });
+
+            const data = await res.json();
+            output.classList.remove('loading');
+
+            if(data.results) {
+                output.textContent = data.results;
+            } else {
+                output.textContent = "❌ Ошибка: " + (data.error || "Неизвестная ошибка");
+            }
+        } catch (e) {
+            output.classList.remove('loading');
+            output.textContent = "❌ Ошибка соединения: " + e.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Выполнить автономно";
+        }
+        loadMemory();
+    }
+
+    // Мультимодальность: обработка файлов
+    let currentBase64Image = null;
+
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) processFile(file);
+    }
+
+    function handleDrop(event) {
+        event.preventDefault();
+        const file = event.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) processFile(file);
+    }
+
+    function processFile(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            currentBase64Image = e.target.result; // Data URL
+            document.getElementById('file-preview').textContent = `✅ Файл загружен: ${file.name} (${Math.round(file.size/1024)} KB)`;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async function loadMemory() {
+        const res = await fetch('/api/memory');
+        const data = await res.json();
+        const div = document.getElementById('memory-display');
+
+        if(data.short_term && data.short_term.length > 0) {
+            let html = '<h3>Последние события:</h3>';
+            data.short_term.forEach(m => {
+                html += `<p><strong>${m.role}:</strong> ${m.content.substring(0, 150)}${m.content.length>150?'...':''}</p>`;
+            });
+            div.innerHTML = html;
+        } else {
+            div.innerHTML = "Память пуста";
+        }
+    }
+
+    // Init
+    loadAgents();
+    loadMemory();
+</script>
+
+</body>
+</html>
