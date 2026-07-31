@@ -3,7 +3,7 @@
 *.pyc
 __pycache__/
 
-# Log files
+# Logs
 *.log
 nexus_agent.log
 ```

@@ -21,3 +21,5 @@
 2026-07-31 18:15:58,678 - NexusCore - WARNING - [MODEL_CHECK] Ошибка при получении списка моделей: Cannot connect to host invalid-url:12345 ssl:default [Name or service not known]
 2026-07-31 18:18:46,959 - NexusCore - INFO - [GRAPH] Загружено 4 узлов из базы.
 2026-07-31 18:18:46,959 - NexusCore - INFO - [GRAPH] Графовая память инициализирована.
+2026-07-31 18:22:19,017 - NexusCore - INFO - [GRAPH] Загружено 4 узлов из базы.
+2026-07-31 18:22:19,017 - NexusCore - INFO - [GRAPH] Графовая память инициализирована.
