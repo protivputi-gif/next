@@ -410,25 +410,18 @@ class GraphOrchestrator:
 
     async def execute_graph(self, main_task: str, planner_agent=None, image_data=None):
         """
-        1. Планировщик разбивает задачу на граф.
-        2. Выполняет узлы в топологическом порядке.
-        3. Динамически перестраивает граф при ошибках.
+        1. Planner breaks down the task into a graph.
+        2. Executes nodes in topological order.
+        3. Dynamically rebuilds graph on errors.
         """
-        # Шаг 1: Планирование
-        plan_prompt = f"""
-        Ты главный архитектор Nexus. Твоя задача: разбить задачу '{main_task}' на пошаговый план (граф).
-        Доступные агенты: {list(self.agents.keys())}.
-        Инструменты системы: {list(TOOLS.keys())}.
+        # Step 1: Planning
+        plan_prompt = f"""You are the Nexus chief architect. Your task: break down the task '{main_task}' into a step-by-step plan (graph).
+Available agents: {list(self.agents.keys())}.
+System tools: {list(TOOLS.keys())}.
 
-        Верни ТОЛЬКО JSON список шагов. Каждый шаг:
-        {{
-            "id": 0,
-            "description": "Что сделать",
-            "agent": "Имя агента или 'system_tool'",
-            "depends_on": [список id предыдущих шагов]
-        }}
-        Если нужны системные команды (установка SDK, компиляция), используй агента 'System' или инструмент напрямую.
-        """
+Return ONLY a JSON list of steps without any additional text. Each step format:
+{{"id":0,"description":"What to do","agent":"Agent name or 'system_tool'","depends_on":[]}}
+If system commands are needed (SDK install, compilation), use agent 'System' or tool directly."""
 
         # Используем планировщика (или первого доступного агента как мета-агента)
         agent_list = list(self.agents.values())
@@ -538,28 +531,21 @@ class GraphOrchestrator:
 
     async def execute_graph_stream(self, main_task: str, planner_agent=None, image_data=None):
         """
-        Асинхронный генератор для стриминга результатов выполнения графа.
-        1. Планирование -> статус 'planning'
-        2. Выполнение узлов -> статусы 'tool_use', 'memory_search', 'code_execution', etc.
-        3. Формирование ответа -> статус 'response'
+        Async generator for streaming graph execution results.
+        1. Planning -> status 'planning'
+        2. Node execution -> statuses 'tool_use', 'memory_search', 'code_execution', etc.
+        3. Response formation -> status 'response'
         """
-        # Шаг 1: Планирование
+        # Step 1: Planning
         yield {'type': 'status', 'status': 'planning'}
         
-        plan_prompt = f"""
-        Ты главный архитектор Nexus. Твоя задача: разбить задачу '{main_task}' на пошаговый план (граф).
-        Доступные агенты: {list(self.agents.keys())}.
-        Инструменты системы: {list(TOOLS.keys())}.
+        plan_prompt = f"""You are the Nexus chief architect. Your task: break down the task '{main_task}' into a step-by-step plan (graph).
+Available agents: {list(self.agents.keys())}.
+System tools: {list(TOOLS.keys())}.
 
-        Верни ТОЛЬКО JSON список шагов. Каждый шаг:
-        {{
-            "id": 0,
-            "description": "Что сделать",
-            "agent": "Имя агента или 'system_tool'",
-            "depends_on": [список id предыдущих шагов]
-        }}
-        Если нужны системные команды (установка SDK, компиляция), используй агента 'System' или инструмент напрямую.
-        """
+Return ONLY a JSON list of steps without any additional text. Each step format:
+{{"id":0,"description":"What to do","agent":"Agent name or 'system_tool'","depends_on":[]}}
+If system commands are needed (SDK install, compilation), use agent 'System' or tool directly."""
 
         agent_list = list(self.agents.values())
         if not agent_list:
@@ -731,91 +717,75 @@ global_world_model = WorldModel()
 class TreeOfThoughts:
     @staticmethod
     async def generate_thoughts(agent, task, context, n_branches=3):
-        """Генерирует N альтернативных путей решения"""
-        prompt = f"""
-        Ты — стратегическое ядро Nexus. Задача: '{task}'.
-        Контекст: {context}
-        
-        Сгенерируй ровно {n_branches} различных подхода к решению этой задачи.
-        Каждый подход должен отличаться стратегией (напр. один через скрипты, другой через CLI, третий через проверку файлов).
-        
-        Верни ТОЛЬКО JSON массив:
-        [
-            {{
-                "id": 1,
-                "strategy_name": "Название подхода",
-                "steps": ["шаг 1", "шаг 2"],
-                "pros": ["преимущество 1"],
-                "cons": ["риск 1"]
-            }},
-            ...
-        ]
-        """
+        """Generates N alternative solution paths"""
+        prompt = f"""You are the Nexus strategic core. Task: '{task}'.
+Context: {context}
+
+Generate exactly {n_branches} different approaches to solve this task.
+Each approach must differ in strategy (e.g., one via scripts, another via CLI, third via file checks).
+
+Return ONLY a JSON array without any additional text:
+[{{"id":1,"strategy_name":"Strategy Name","steps":["step1"],"pros":["pro"],"cons":["con"]}}]"""
         try:
             messages = [{"role": "system", "content": prompt}]
             response = await agent._call_llm(messages)
-            clean_json = re.search(r'\[.*\]', response, re.DOTALL)
+            # Improved cleaning: remove markdown and everything before/after JSON
+            clean_json = re.search(r'\[\s*\{.*\}\s*\]', response, re.DOTALL)
             if clean_json:
                 thoughts = json.loads(clean_json.group())
-                # Валидация и нормализация структуры
+                # Validation and normalization
                 validated = []
                 for t in thoughts:
                     if not isinstance(t, dict):
                         continue
                     validated.append({
                         "id": t.get('id', len(validated)),
-                        "strategy_name": str(t.get('strategy_name', 'Стратегия')),
+                        "strategy_name": str(t.get('strategy_name', 'Strategy')),
                         "steps": [str(s) for s in t.get('steps', [])],
                         "pros": [str(p) for p in t.get('pros', [])],
                         "cons": [str(c) for c in t.get('cons', [])]
                     })
                 return validated if validated else None
         except Exception as e:
-            logging.warning(f"ToT генерация не удалась: {e}")
+            logging.warning(f"ToT generation failed: {e}")
         
-        # Fallback если LLM ошиблась
+        # Fallback if LLM fails
         return [
             {
                 "id": 1, 
-                "strategy_name": "Стандартный подход", 
-                "steps": ["Анализ", "Выполнение", "Проверка"], 
-                "pros": ["Надежно"], 
-                "cons": ["Медленно"]
+                "strategy_name": "Standard Approach", 
+                "steps": ["Analyze", "Execute", "Verify"], 
+                "pros": ["Reliable"], 
+                "cons": ["Slow"]
             }
         ]
 
     @staticmethod
     async def evaluate_thoughts(agent, task, thoughts):
-        """Оценивает каждый путь и выбирает лучший"""
+        """Evaluates each path and selects the best one"""
         best_choice = None
         max_score = -1
         
         for thought in thoughts:
-            # Преобразуем элементы в строки перед join
+            # Convert elements to strings before join
             pros_str = ', '.join(str(p) for p in thought.get('pros', []))
             cons_str = ', '.join(str(c) for c in thought.get('cons', []))
             
-            eval_prompt = f"""
-            Оцени стратегию "{thought.get('strategy_name', 'Неизвестно')}" для задачи '{task}'.
-            Плюсы: {pros_str}
-            Минусы: {cons_str}
-            
-            Оцени по шкале 0-10:
-            1. Вероятность успеха (Success Probability)
-            2. Эффективность ресурсов (Resource Efficiency)
-            3. Безопасность (Safety)
-            
-            Верни ТОЛЬКО JSON:
-            {{
-                "scores": {{ "success": 0, "efficiency": 0, "safety": 0 }},
-                "total_score": 0,
-                "reasoning": "Почему такая оценка"
-            }}
-            """
+            eval_prompt = f"""You are the Nexus strategy evaluator. Evaluate the strategy "{thought.get('strategy_name', 'Unknown')}" for task '{task}'.
+Pros: {pros_str}
+Cons: {cons_str}
+
+Rate on a scale of 0-10:
+1. Success Probability
+2. Resource Efficiency
+3. Safety
+
+Return ONLY JSON without any additional text: {{"scores":{{"success":0,"efficiency":0,"safety":0}},"total_score":0,"reasoning":"why"}}"""
             try:
                 messages = [{"role": "system", "content": eval_prompt}]
                 response = await agent._call_llm(messages)
-                clean_json = re.search(r'\{.*\}', response, re.DOTALL)
+                # Improved JSON cleaning
+                clean_json = re.search(r'\{\s*".*?\s*\}', response, re.DOTALL)
                 if clean_json:
                     eval_data = json.loads(clean_json.group())
                     score = eval_data.get('total_score', 0)
@@ -827,12 +797,12 @@ class TreeOfThoughts:
                             "evaluation": eval_data
                         }
             except Exception as e:
-                logging.warning(f"Ошибка оценки ветки ToT: {e}")
+                logging.warning(f"ToT branch evaluation error: {e}")
                 continue
         
         if not best_choice:
-            # Если оценка не удалась, берем первую ветку
-            return {"thought": thoughts[0], "evaluation": {"reasoning": "Выбрано по умолчанию"}}
+            # If evaluation fails, take the first branch
+            return {"thought": thoughts[0], "evaluation": {"reasoning": "Selected by default"}}
             
         return best_choice
 
@@ -1088,49 +1058,52 @@ class Agent:
                             res = await TOOLS['install_pkg']['func']("pip", pkg)
                             logger.info(f"[{self.name}] Установка {pkg}: {res[:50]}")
 
-        # 3. Основной цикл ReAct
-        system_prompt = f"""Ты агент '{self.name}'. Роль: {self.role}.
-        Стратегия (из рефлексии): {reflection.get('optimized_strategy')}
-        Состояние мира: {json.dumps(self.world_model.get_state(), ensure_ascii=False)}
+        # 3. Main ReAct loop
+        system_prompt = f"""You are agent '{self.name}'. Role: {self.role}.
+Strategy (from reflection): {reflection.get('optimized_strategy')}
+World state: {json.dumps(self.world_model.get_state(), ensure_ascii=False)}
 
-        Доступные инструменты: {list(TOOLS.keys())}.
-        Контекст: {context}
-        История: {history}
+Available tools: {list(TOOLS.keys())}.
+Context: {context}
+History: {history}
 
-        ЗАДАЧА: {task}
+TASK: {task}
 
-        ИНСТРУКЦИЯ:
-        1. Думай шаг за шагом.
-        2. Инструменты: {{"action": "tool_name", "args": {{...}}}}
-        3. Ответ: {{"action": "final_answer", "content": "..."}}
-        4. ТОЛЬКО JSON.
-        """
+INSTRUCTION - Return ONLY JSON without any additional text:
+1. To call a tool: {{"action":"tool_name","args":{{...}}}}
+2. To complete: {{"action":"final_answer","content":"..."}}
+3. No markdown, no explanation outside JSON."""
 
         current_history = list(history)
-        # Добавляем задачу с учетом изображения
+        # Add task with image support
         user_msg = {"role": "user", "content": task}
         current_history.append(user_msg)
 
         max_iterations = 10
         for i in range(max_iterations):
             try:
-                logger.debug(f"[{self.name}] Итерация ReAct {i+1}/{max_iterations}")
+                logger.debug(f"[{self.name}] ReAct iteration {i+1}/{max_iterations}")
                 
-                # Передаем image_data только в первом запросе после задачи
+                # Pass image_data only in the first request after the task
                 img_to_pass = image_data if i == 0 and image_data else None
 
-                # Формируем сообщения для API
+                # Form messages for API
                 api_messages = [{"role": "system", "content": system_prompt}] + current_history
 
                 content = await self._call_llm(api_messages, image_data=img_to_pass)
 
-                # Парсинг ответа
+                # Parse response with improved handling
                 try:
+                    # Remove markdown and any text before/after JSON
                     clean_content = content.replace('```json', '').replace('```', '').strip()
+                    # Try to find JSON object
+                    json_match = re.search(r'\{\s*".*?\s*\}', clean_content, re.DOTALL)
+                    if json_match:
+                        clean_content = json_match.group()
                     response_json = json.loads(clean_content)
 
                     if response_json.get('action') == 'final_answer':
-                        logger.info(f"[{self.name}] Задача завершена успешно")
+                        logger.info(f"[{self.name}] Task completed successfully")
                         self.world_model.update_state("final_answer", response_json['content'])
                         return response_json['content']
 
@@ -1138,54 +1111,81 @@ class Agent:
                         tool_name = response_json['action']
                         args = response_json.get('args', {})
                         
-                        # Валидация аргументов для инструментов
+                        # Validate tool arguments
                         if not isinstance(args, dict):
-                            logger.warning(f"[{self.name}] Аргументы инструмента должны быть словарем")
+                            logger.warning(f"[{self.name}] Tool arguments must be a dictionary")
                             args = {}
 
-                        logger.info(f"[{self.name}] Вызов инструмента: {tool_name}")
+                        logger.info(f"[{self.name}] Calling tool: {tool_name}")
                         
-                        # Маппинг имен аргументов для совместимости
-                        # run_shell_command ожидает 'cmd', но агент может передать 'command'
+                        # Argument name mapping for compatibility
+                        # run_shell expects 'cmd', but agent may send 'command'
                         if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
                             args['cmd'] = args.pop('command')
+                        # install_pkg expects 'manager' and 'package'
+                        if tool_name == 'install_pkg':
+                            if 'pkg_manager' in args and 'manager' not in args:
+                                args['manager'] = args.pop('pkg_manager')
+                            if 'pkg_name' in args and 'package' not in args:
+                                args['package'] = args.pop('pkg_name')
                         
                         try:
                             res = await TOOLS[tool_name]['func'](**args)
                         except TypeError as te:
-                            # Если переданы неверные аргументы, пытаемся исправить
-                            logger.warning(f"[{self.name}] Ошибка аргументов инструмента: {te}")
-                            res = f"Ошибка вызова инструмента: неверные аргументы. Ожидались: {list(TOOLS[tool_name]['func'].__code__.co_varnames[:TOOLS[tool_name]['func'].__code__.co_argcount])}"
+                            # If wrong arguments passed, try to fix
+                            logger.warning(f"[{self.name}] Tool argument error: {te}")
+                            res = f"Tool call error: invalid arguments. Expected: {list(TOOLS[tool_name]['func'].__code__.co_varnames[:TOOLS[tool_name]['func'].__code__.co_argcount])}"
 
-                        # Обновляем модель мира
+                        # Update world model
                         self.world_model.update_state(tool_name, res)
 
                         current_history.append({"role": "assistant", "content": content})
-                        current_history.append({"role": "user", "content": f"Результат {tool_name}: {res}"})
+                        current_history.append({"role": "user", "content": f"Result of {tool_name}: {res}"})
                         continue
                     else:
-                        logger.warning(f"[{self.name}] Неизвестное действие: {response_json}")
-                        return f"Неизвестное действие: {response_json}"
+                        action_val = response_json.get('action', 'unknown')
+                        logger.warning(f"[{self.name}] Unknown action: {action_val}. Available: {list(TOOLS.keys())}")
+                        # Try to find correct tool by partial match
+                        matched_tool = None
+                        for t in TOOLS.keys():
+                            if t in action_val or action_val in t:
+                                matched_tool = t
+                                break
+                        if matched_tool:
+                            logger.info(f"[{self.name}] Corrected action: {action_val} -> {matched_tool}")
+                            response_json['action'] = matched_tool
+                            # Recursively handle corrected action
+                            args = response_json.get('args', {})
+                            if not isinstance(args, dict):
+                                args = {}
+                            if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
+                                args['cmd'] = args.pop('command')
+                            res = await TOOLS[matched_tool]['func'](**args)
+                            self.world_model.update_state(matched_tool, res)
+                            current_history.append({"role": "assistant", "content": content})
+                            current_history.append({"role": "user", "content": f"Result of {matched_tool}: {res}"})
+                            continue
+                        return f"Unknown action: {action_val}. Available tools: {list(TOOLS.keys())}"
 
                 except json.JSONDecodeError as je:
-                    logger.error(f"[{self.name}] Ошибка парсинга JSON: {je}")
-                    # Попытка вытащить JSON из текста
+                    logger.error(f"[{self.name}] JSON parsing error: {je}. Model response: {content[:200]}")
+                    # Try to extract JSON from text
                     match = re.search(r'\{.*\}', content, re.DOTALL)
                     if match:
                         try:
                             response_json = json.loads(match.group())
                             if response_json.get('action') == 'final_answer':
-                                logger.info(f"[{self.name}] Задача завершена (извлечено из текста)")
+                                logger.info(f"[{self.name}] Task completed (extracted from text)")
                                 return response_json['content']
                         except: pass
-                    return f"Модель вернула не JSON: {content}"
+                    return f"Model returned non-JSON: {content[:200]}"
 
             except Exception as e:
-                logger.error(f"[{self.name}] Ошибка выполнения: {str(e)}")
-                return f"Ошибка выполнения: {str(e)}"
+                logger.error(f"[{self.name}] Execution error: {str(e)}")
+                return f"Execution error: {str(e)}"
 
-        logger.warning(f"[{self.name}] Превышено количество итераций ({max_iterations})")
-        return "Превышено количество итераций."
+        logger.warning(f"[{self.name}] Max iterations exceeded ({max_iterations})")
+        return "Max iterations exceeded."
 
     # Для обратной совместимости со старым кодом оркестратора
     async def think_and_act(self, task, context, history, image_data=None):
