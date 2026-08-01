@@ -3,133 +3,650 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus - Автономная Мультиагентная Система</title>
+    <title>Nexus AI Agent</title>
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --success: #10b981; --danger: #ef4444; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; height: 100vh; overflow: hidden; }
-        .main-layout { display: grid; grid-template-columns: 2fr 1fr; height: 100vh; gap: 0; }
-        .chat-section { background: var(--bg); display: flex; flex-direction: column; border-right: 1px solid #e2e8f0; }
-        .sidebar { background: var(--card); overflow-y: auto; padding: 20px; }
+        :root {
+            --primary: #0066FF;
+            --primary-dark: #0052CC;
+            --bg: #0A0A0A;
+            --surface: #141414;
+            --surface-elevated: #1E1E1E;
+            --text: #FFFFFF;
+            --text-secondary: #A0A0A0;
+            --border: #2A2A2A;
+            --success: #00DC82;
+            --error: #FF3B30;
+            --warning: #FF9500;
+        }
         
-        /* Chat Styles */
-        .chat-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .chat-header { padding: 20px; background: var(--card); border-bottom: 1px solid #e2e8f0; }
-        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .message { max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; }
-        .message.user { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 4px; }
-        .message.agent { align-self: flex-start; background: #e2e8f0; color: var(--text); border-bottom-left-radius: 4px; }
-        .message.system { align-self: center; background: #fef3c7; color: #92400e; font-size: 0.9em; }
-        .chat-input-area { padding: 20px; background: var(--card); border-top: 1px solid #e2e8f0; }
-        .chat-input-wrapper { display: flex; gap: 10px; align-items: flex-end; position: relative; }
-        .chat-input { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; resize: none; font-family: inherit; min-height: 44px; max-height: 200px; overflow-y: auto; transition: border-color 0.2s, box-shadow 0.2s; }
-        .chat-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-        .send-btn { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; min-width: 50px; }
-        .send-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-        .send-btn:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
-        .clear-btn { position: absolute; right: 60px; bottom: 18px; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2em; padding: 4px; border-radius: 50%; display: none; }
-        .clear-btn:hover { color: var(--danger); background: #fee2e2; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        /* Sidebar Styles */
-        .sidebar h2 { margin-top: 0; color: var(--primary); display: flex; align-items: center; gap: 10px; font-size: 1.2em; }
-        .sidebar h3 { font-size: 1em; color: #64748b; margin-top: 20px; }
-        input, select, textarea, button { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
-        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        button:hover { opacity: 0.9; transform: translateY(-1px); }
-        button.secondary { background: #64748b; }
-        .agent-list { list-style: none; padding: 0; }
-        .agent-item { background: #eff6ff; padding: 10px; margin: 5px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--primary); }
-        .log-area { background: #1e293b; color: #10b981; padding: 15px; border-radius: 8px; height: 200px; overflow-y: auto; font-family: 'Consolas', monospace; white-space: pre-wrap; font-size: 0.85em; }
-        #memory-display { font-size: 0.85em; color: #64748b; max-height: 150px; overflow-y: auto; background: #f1f5f9; padding: 10px; border-radius: 6px; }
-        .lesson-badge { background: var(--success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
-        .status-done { background: #d1fae5; color: #065f46; }
-        .status-failed { background: #fee2e2; color: #991b1b; }
-        .loading { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        #model-check-result { border: 2px solid transparent; transition: all 0.3s ease; }
-        .file-drop-zone { border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center; }
-        .section-card { background: var(--card); padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header */
+        .header {
+            padding: 16px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .logo {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary), #6699FF);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        
+        .agent-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--surface-elevated);
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Main Chat Area */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 20px;
+        }
+        
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 85%;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+        
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .message.agent .message-avatar {
+            background: linear-gradient(135deg, var(--primary), #6699FF);
+        }
+        
+        .message.user .message-avatar {
+            background: var(--surface-elevated);
+        }
+        
+        .message-content {
+            padding: 14px 18px;
+            border-radius: 18px;
+            line-height: 1.5;
+            font-size: 15px;
+        }
+        
+        .message.agent .message-content {
+            background: var(--surface-elevated);
+            border-bottom-left-radius: 4px;
+        }
+        
+        .message.user .message-content {
+            background: var(--primary);
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.system {
+            align-self: center;
+            max-width: 100%;
+        }
+        
+        .message.system .message-content {
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 8px 16px;
+        }
+        
+        /* Input Area */
+        .input-area {
+            padding: 20px 0 0 0;
+        }
+        
+        .input-wrapper {
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: border-color 0.2s;
+        }
+        
+        .input-wrapper:focus-within {
+            border-color: var(--primary);
+        }
+        
+        .file-preview {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--surface);
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .file-preview-remove {
+            margin-left: auto;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .file-preview-remove:hover {
+            background: var(--surface-elevated);
+        }
+        
+        .input-row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        
+        .chat-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-size: 15px;
+            font-family: inherit;
+            resize: none;
+            max-height: 150px;
+            min-height: 24px;
+            line-height: 1.5;
+        }
+        
+        .chat-input:focus {
+            outline: none;
+        }
+        
+        .chat-input::placeholder {
+            color: var(--text-secondary);
+        }
+        
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--primary);
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .send-btn:hover:not(:disabled) {
+            background: var(--primary-dark);
+            transform: scale(1.05);
+        }
+        
+        .send-btn:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+        
+        .attach-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .attach-btn:hover {
+            background: var(--surface-elevated);
+            color: var(--text);
+        }
+        
+        /* Sidebar Panel */
+        .sidebar {
+            position: fixed;
+            right: -380px;
+            top: 0;
+            width: 380px;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            transition: right 0.3s ease;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar.open {
+            right: 0;
+        }
+        
+        .sidebar-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .sidebar-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .close-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 24px;
+            padding: 4px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .close-sidebar:hover {
+            background: var(--surface-elevated);
+            color: var(--text);
+        }
+        
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+        
+        .sidebar-section {
+            margin-bottom: 32px;
+        }
+        
+        .sidebar-section h3 {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-dark);
+        }
+        
+        .btn-primary:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+        
+        .agent-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: var(--surface-elevated);
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .agent-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .agent-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--primary), #6699FF);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .agent-name {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .agent-model {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+        
+        .log-output {
+            background: #0D0D0D;
+            border-radius: 10px;
+            padding: 12px;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            max-height: 200px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        
+        .memory-item {
+            padding: 12px;
+            background: var(--surface-elevated);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .toggle-sidebar {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: var(--surface-elevated);
+            border: 1px solid var(--border);
+            color: var(--text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            transition: all 0.2s;
+            z-index: 99;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .toggle-sidebar:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: scale(1.05);
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--surface);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+        
+        /* Loading indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); opacity: 0.4; }
+            50% { transform: translateY(-4px); opacity: 1; }
+        }
     </style>
 </head>
 <body>
-
-<div class="main-layout">
-    <!-- Левая часть: Чат с агентом -->
-    <div class="chat-section">
-        <div class="chat-header">
-            <h2 style="margin: 0;">💬 Чат с Агентом</h2>
-            <p style="margin: 5px 0 0 0; color: #64748b; font-size: 0.9em;">Отправьте задачу и система выполнит её автономно</p>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">N</div>
+            <span>Nexus AI</span>
         </div>
-        
-        <div class="chat-messages" id="chat-messages">
+        <div class="agent-status">
+            <div class="status-dot"></div>
+            <span id="active-agents-count">0 агентов активно</span>
+        </div>
+    </header>
+
+    <!-- Main Chat Container -->
+    <div class="chat-container">
+        <div class="messages" id="chat-messages">
             <div class="message system">
-                👋 Добро пожаловать в Nexus! Добавьте агентов справа и отправьте задачу в чат.
+                <div class="message-content">
+                    👋 Привет! Я Nexus — ваш автономный AI-агент. Опишите задачу, и я выполню её.
+                </div>
             </div>
         </div>
         
-        <!-- Индикатор статуса агента -->
-        <div id="status-display" style="padding: 10px 20px; background: #f1f5f9; border-top: 1px solid #e2e8f0; font-size: 0.85em; color: #64748b; display: none;"></div>
-        
-        <div class="chat-input-area">
-            <div class="file-drop-zone" id="file-drop-zone"
-                 ondrop="handleDrop(event)" ondragover="event.preventDefault()">
-                <p style="margin: 0 0 10px 0; color: #64748b; font-size: 0.85em;">📎 Перетащите изображение сюда или нажмите для выбора</p>
-                <input type="file" id="file-input" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
-                <button type="button" class="secondary" onclick="document.getElementById('file-input').click()" style="width: auto; padding: 8px 16px; font-size: 0.85em;">Выбрать файл</button>
-                <div id="file-preview" style="margin-top: 10px; font-size: 0.85em; color: var(--primary);"></div>
-            </div>
-            
-            <div class="chat-input-wrapper">
-                <textarea id="task-input" class="chat-input" rows="2" placeholder="Опишите задачу (напр. 'Создай Android приложение с кнопкой, собери его и проверь логи')..."></textarea>
-                <button type="button" class="clear-btn" id="clear-btn" onclick="clearInput()" title="Очистить">✕</button>
-                <button onclick="runTask()" id="run-btn" class="send-btn">➤</button>
+        <div class="input-area">
+            <div class="input-wrapper">
+                <div id="file-preview-container" style="display: none;">
+                    <div class="file-preview">
+                        <span>📎</span>
+                        <span id="file-preview-name"></span>
+                        <span class="file-preview-remove" onclick="removeFile()">✕</span>
+                    </div>
+                </div>
+                <div class="input-row">
+                    <input type="file" id="file-input" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+                    <button class="attach-btn" onclick="document.getElementById('file-input').click()" title="Прикрепить изображение">
+                        📎
+                    </button>
+                    <textarea 
+                        id="task-input" 
+                        class="chat-input" 
+                        rows="1"
+                        placeholder="Опишите задачу..."
+                        onkeydown="handleKeyDown(event)"
+                        oninput="autoResize(this)"
+                    ></textarea>
+                    <button onclick="runTask()" id="run-btn" class="send-btn">
+                        ➤
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Правая часть: Панель управления -->
-    <div class="sidebar">
-        <!-- Добавление агента -->
-        <div class="section-card">
-            <h2>🤖 Добавить Агента</h2>
-            <input type="text" id="agent-name" placeholder="Имя (напр. Coder, AndroidBuilder)">
-            <input type="text" id="agent-role" placeholder="Роль (напр. Пишет код на Python/Java)">
-            <input type="text" id="agent-model" placeholder="Модель (напр. llama3, gpt-4)">
-            <input type="text" id="agent-url" placeholder="Base URL (http://localhost:11434)">
-            <input type="password" id="agent-key" placeholder="API Key (пусто для локальных)">
-            
-            <div style="margin: 10px 0;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="skip-model-check" disabled>
-                    <span style="font-size: 0.85em; color: #64748b; text-decoration: line-through;">Пропустить проверку модели</span>
-                </label>
-                <p style="font-size: 0.8em; color: #10b981; margin-top: 5px;">
-                    ✅ Проверка модели обязательна
-                </p>
+    <!-- Toggle Sidebar Button -->
+    <button class="toggle-sidebar" onclick="toggleSidebar()">⚙️</button>
+
+    <!-- Sidebar Panel -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">Настройки</div>
+            <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
+        </div>
+        <div class="sidebar-content">
+            <!-- Add Agent Section -->
+            <div class="sidebar-section">
+                <h3>Добавить агента</h3>
+                <div class="form-group">
+                    <label>Имя</label>
+                    <input type="text" id="agent-name" class="form-input" placeholder="Coder">
+                </div>
+                <div class="form-group">
+                    <label>Роль</label>
+                    <input type="text" id="agent-role" class="form-input" placeholder="Пишет код на Python">
+                </div>
+                <div class="form-group">
+                    <label>Модель</label>
+                    <input type="text" id="agent-model" class="form-input" placeholder="llama3">
+                </div>
+                <div class="form-group">
+                    <label>Base URL</label>
+                    <input type="text" id="agent-url" class="form-input" placeholder="http://localhost:11434">
+                </div>
+                <div class="form-group">
+                    <label>API Key (опционально)</label>
+                    <input type="password" id="agent-key" class="form-input" placeholder="••••••••">
+                </div>
+                <button onclick="addAgent()" id="add-agent-btn" class="btn-primary">Создать агента</button>
+                <div id="model-check-result" style="margin-top: 12px; padding: 12px; border-radius: 10px; display: none; font-size: 13px;"></div>
             </div>
-            
-            <button onclick="addAgent()" id="add-agent-btn">Создать Агента</button>
-            
-            <div id="model-check-result" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none; font-size: 0.85em;"></div>
 
-            <h3>Активные агенты:</h3>
-            <ul id="agents-ul" class="agent-list"></ul>
-        </div>
+            <!-- Active Agents Section -->
+            <div class="sidebar-section">
+                <h3>Активные агенты</h3>
+                <div id="agents-list"></div>
+            </div>
 
-        <!-- Результаты выполнения -->
-        <div class="section-card">
-            <h2>📝 Результаты</h2>
-            <div id="output" class="log-area">Ожидание задач...</div>
-        </div>
+            <!-- Output Log Section -->
+            <div class="sidebar-section">
+                <h3>Результаты</h3>
+                <div id="output" class="log-output">Ожидание задач...</div>
+            </div>
 
-        <!-- Память и Уроки -->
-        <div class="section-card">
-            <h2>🧠 Память системы</h2>
-            <div id="memory-display">Память пуста.</div>
-            <button class="secondary" onclick="loadMemory()" style="width: auto; margin-top: 10px; font-size: 0.85em; padding: 8px 16px;">Обновить</button>
+            <!-- Memory Section -->
+            <div class="sidebar-section">
+                <h3>Память</h3>
+                <div id="memory-display" style="margin-bottom: 12px;"></div>
+                <button onclick="loadMemory()" class="btn-primary" style="background: var(--surface-elevated);">Обновить</button>
+            </div>
         </div>
     </div>
-</div>
 
 <script>
     // Добавление сообщения в чат
@@ -371,6 +888,263 @@
     // Init
     loadAgents();
     loadMemory();
+</script>
+
+</body>
+</html>
+
+<script>
+    // Toggle Sidebar
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+    }
+
+    // Auto-resize textarea
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+    }
+
+    // Handle Enter key
+    function handleKeyDown(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            runTask();
+        }
+    }
+
+    // Add message to chat
+    function addMessage(content, type) {
+        const messagesDiv = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        
+        const avatar = document.createElement('div');
+        avatar.className = 'message-avatar';
+        avatar.textContent = type === 'user' ? '👤' : '🤖';
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.textContent = content;
+        
+        messageDiv.appendChild(avatar);
+        messageDiv.appendChild(contentDiv);
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Show typing indicator
+    function showTypingIndicator() {
+        const messagesDiv = document.getElementById('chat-messages');
+        const indicator = document.createElement('div');
+        indicator.className = 'message agent';
+        indicator.id = 'typing-indicator';
+        indicator.innerHTML = `
+            <div class="message-avatar">🤖</div>
+            <div class="message-content">
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        `;
+        messagesDiv.appendChild(indicator);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Remove typing indicator
+    function removeTypingIndicator() {
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) indicator.remove();
+    }
+
+    // File handling
+    let currentBase64Image = null;
+    let currentFileName = '';
+
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) processFile(file);
+    }
+
+    function processFile(file) {
+        currentFileName = file.name;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            currentBase64Image = e.target.result;
+            document.getElementById('file-preview-name').textContent = `${file.name} (${Math.round(file.size/1024)} KB)`;
+            document.getElementById('file-preview-container').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function removeFile() {
+        currentBase64Image = null;
+        currentFileName = '';
+        document.getElementById('file-preview-container').style.display = 'none';
+        document.getElementById('file-input').value = '';
+    }
+
+    // Add Agent
+    async function addAgent() {
+        const data = {
+            name: document.getElementById('agent-name').value,
+            role: document.getElementById('agent-role').value,
+            model: document.getElementById('agent-model').value,
+            base_url: document.getElementById('agent-url').value,
+            api_key: document.getElementById('agent-key').value,
+        };
+
+        if(!data.name || !data.role || !data.model || !data.base_url) { 
+            alert('Заполните все поля: имя, роль, модель и URL сервера'); 
+            return; 
+        }
+        
+        const btn = document.getElementById('add-agent-btn');
+        const resultDiv = document.getElementById('model-check-result');
+        
+        btn.disabled = true;
+        btn.textContent = '🔍 Проверка...';
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = '#1E3A5F';
+        resultDiv.style.color = '#60A5FA';
+        resultDiv.innerHTML = '🔄 Тестирование модели...';
+
+        const res = await fetch('/api/agents', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if(res.ok) {
+            const responseData = await res.json();
+            resultDiv.style.background = '#064E3B';
+            resultDiv.style.color = '#34D399';
+            resultDiv.innerHTML = `✅ <strong>Агент добавлен!</strong><br>${responseData.model_check || 'Модель доступна'}`;
+            document.getElementById('agent-name').value = '';
+            loadAgents();
+            addMessage(`✅ Агент "${data.name}" успешно добавлен`, 'system');
+        } else {
+            const err = await res.json();
+            resultDiv.style.background = '#7F1D1D';
+            resultDiv.style.color = '#F87171';
+            resultDiv.innerHTML = `❌ <strong>Ошибка:</strong> ${err.details || err.error}`;
+        }
+        
+        btn.disabled = false;
+        btn.textContent = 'Создать агента';
+        
+        setTimeout(() => {
+            resultDiv.style.display = 'none';
+        }, 10000);
+    }
+
+    // Load Agents
+    async function loadAgents() {
+        const res = await fetch('/api/agents');
+        const agents = await res.json();
+        const list = document.getElementById('agents-list');
+        const countSpan = document.getElementById('active-agents-count');
+
+        if(agents.length === 0) {
+            list.innerHTML = '<div style="color: var(--text-secondary); font-size: 13px; padding: 12px;">Нет активных агентов</div>';
+            countSpan.textContent = '0 агентов активно';
+            return;
+        }
+
+        countSpan.textContent = `${agents.length} агент(ов) активно`;
+        list.innerHTML = '';
+        agents.forEach(name => {
+            list.innerHTML += `
+                <div class="agent-item">
+                    <div class="agent-info">
+                        <div class="agent-icon">🤖</div>
+                        <div>
+                            <div class="agent-name">${name}</div>
+                            <div class="agent-model">Active</div>
+                        </div>
+                    </div>
+                    <div class="status-indicator"></div>
+                </div>
+            `;
+        });
+    }
+
+    // Run Task
+    async function runTask() {
+        const taskInput = document.getElementById('task-input');
+        const task = taskInput.value.trim();
+        const output = document.getElementById('output');
+        const btn = document.getElementById('run-btn');
+
+        if(!task) { 
+            addMessage('⚠️ Введите задачу', 'system');
+            return; 
+        }
+
+        addMessage(task, 'user');
+        taskInput.value = '';
+        autoResize(taskInput);
+        
+        output.textContent = "🔄 Система строит граф задач...\n";
+        btn.disabled = true;
+        
+        showTypingIndicator();
+
+        try {
+            const res = await fetch('/api/run', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ task, image_data: currentBase64Image })
+            });
+
+            const data = await res.json();
+            removeTypingIndicator();
+            
+            if(data.results) {
+                output.textContent = data.results;
+                addMessage('✅ Задача выполнена!', 'system');
+                const shortResult = data.results.substring(0, 200) + (data.results.length > 200 ? '...' : '');
+                addMessage(shortResult, 'agent');
+            } else {
+                output.textContent = "❌ Ошибка: " + (data.error || "Неизвестная ошибка");
+                addMessage(`❌ Ошибка: ${data.error || 'Неизвестная ошибка'}`, 'system');
+            }
+        } catch (e) {
+            removeTypingIndicator();
+            output.textContent = "❌ Ошибка соединения: " + e.message;
+            addMessage(`❌ Ошибка соединения: ${e.message}`, 'system');
+        } finally {
+            btn.disabled = false;
+        }
+        
+        removeFile();
+        loadMemory();
+    }
+
+    // Load Memory
+    async function loadMemory() {
+        const res = await fetch('/api/memory');
+        const data = await res.json();
+        const div = document.getElementById('memory-display');
+
+        if(data.short_term && data.short_term.length > 0) {
+            let html = '';
+            data.short_term.slice(-5).forEach(m => {
+                html += `<div class="memory-item"><strong>${m.role}:</strong> ${m.content.substring(0, 80)}${m.content.length>80?'...':''}</div>`;
+            });
+            div.innerHTML = html;
+        } else {
+            div.innerHTML = '<div style="color: var(--text-secondary); font-size: 13px;">Память пуста</div>';
+        }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAgents();
+        loadMemory();
+    });
 </script>
 
 </body>

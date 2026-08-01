@@ -295,13 +295,21 @@ class SystemTools:
                 cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"}
             )
-            stdout, stderr = await proc.communicate(timeout=120)
+            # В Python 3.12 communicate() не принимает timeout, используем wait_for + asyncio.wait_for
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+            except asyncio.TimeoutError:
+                # Принудительно завершаем процесс при таймауте
+                try:
+                    proc.kill()
+                except:
+                    pass
+                logger.error("[TOOL] Таймаут выполнения команды")
+                return "Таймаут выполнения команды (120 сек)."
+            
             output = stdout.decode() + stderr.decode()
             logger.info(f"[TOOL] Команда выполнена, вывод: {output[:200]}...")
             return output
-        except asyncio.TimeoutError:
-            logger.error("[TOOL] Таймаут выполнения команды")
-            return "Таймаут выполнения команды."
         except Exception as e:
             logger.error(f"[TOOL] Ошибка Shell: {str(e)}")
             return f"Ошибка Shell: {str(e)}"
@@ -400,7 +408,7 @@ class GraphOrchestrator:
         if from_node in self.nodes and to_node in self.nodes:
             self.nodes[to_node].dependencies.append(from_node)
 
-    async def execute_graph(self, main_task: str, planner_agent, image_data=None):
+    async def execute_graph(self, main_task: str, planner_agent=None, image_data=None):
         """
         1. Планировщик разбивает задачу на граф.
         2. Выполняет узлы в топологическом порядке.
@@ -427,7 +435,7 @@ class GraphOrchestrator:
         if not agent_list:
             return "Ошибка: Нет активных агентов для планирования."
 
-        planner = agent_list[0] # Временное решение: первый агент как планировщик
+        planner = planner_agent if planner_agent else agent_list[0] # Временное решение: первый агент как планировщик
 
         ctx = await memory.get_context(main_task.split())
         # Передаем изображение планировщику если есть
@@ -528,7 +536,7 @@ class GraphOrchestrator:
 
         return final_report
 
-    async def execute_graph_stream(self, main_task: str, planner_agent, image_data=None):
+    async def execute_graph_stream(self, main_task: str, planner_agent=None, image_data=None):
         """
         Асинхронный генератор для стриминга результатов выполнения графа.
         1. Планирование -> статус 'planning'
@@ -558,7 +566,7 @@ class GraphOrchestrator:
             yield {'type': 'error', 'text': 'Нет активных агентов для планирования.'}
             return
 
-        planner = agent_list[0]
+        planner = planner_agent if planner_agent else agent_list[0]
         ctx = await memory.get_context(main_task.split())
         
         logger.info("[ORCHESTRATOR/STREAM] Запуск планировщика...")
@@ -574,8 +582,15 @@ class GraphOrchestrator:
 
             logger.info(f"[ORCHESTRATOR/STREAM] План получен: {len(plan_data)} шагов")
             
+            # Убеждаемся что plan_data это список словарей
+            if not isinstance(plan_data, list):
+                raise ValueError("План должен быть списком шагов")
+            
             for step in plan_data:
-                nid = self.create_node(step['description'], step.get('agent'))
+                if not isinstance(step, dict):
+                    logger.warning(f"[ORCHESTRATOR/STREAM] Пропущен шаг неверного формата: {step}")
+                    continue
+                nid = self.create_node(step.get('description', str(step)), step.get('agent'))
                 if 'depends_on' in step:
                     for dep in step['depends_on']:
                         self.add_dependency(dep, nid)
@@ -741,7 +756,20 @@ class TreeOfThoughts:
             response = await agent._call_llm(messages)
             clean_json = re.search(r'\[.*\]', response, re.DOTALL)
             if clean_json:
-                return json.loads(clean_json.group())
+                thoughts = json.loads(clean_json.group())
+                # Валидация и нормализация структуры
+                validated = []
+                for t in thoughts:
+                    if not isinstance(t, dict):
+                        continue
+                    validated.append({
+                        "id": t.get('id', len(validated)),
+                        "strategy_name": str(t.get('strategy_name', 'Стратегия')),
+                        "steps": [str(s) for s in t.get('steps', [])],
+                        "pros": [str(p) for p in t.get('pros', [])],
+                        "cons": [str(c) for c in t.get('cons', [])]
+                    })
+                return validated if validated else None
         except Exception as e:
             logging.warning(f"ToT генерация не удалась: {e}")
         
@@ -763,10 +791,14 @@ class TreeOfThoughts:
         max_score = -1
         
         for thought in thoughts:
+            # Преобразуем элементы в строки перед join
+            pros_str = ', '.join(str(p) for p in thought.get('pros', []))
+            cons_str = ', '.join(str(c) for c in thought.get('cons', []))
+            
             eval_prompt = f"""
-            Оцени стратегию "{thought['strategy_name']}" для задачи '{task}'.
-            Плюсы: {', '.join(thought['pros'])}
-            Минусы: {', '.join(thought['cons'])}
+            Оцени стратегию "{thought.get('strategy_name', 'Неизвестно')}" для задачи '{task}'.
+            Плюсы: {pros_str}
+            Минусы: {cons_str}
             
             Оцени по шкале 0-10:
             1. Вероятность успеха (Success Probability)
@@ -926,11 +958,16 @@ class Agent:
         logger.info(f"[{self.name}] 💡 Обоснование: {evaluation.get('reasoning', 'Нет обоснования')}")
 
         # 3. Ментальная симуляция на основе ЛУЧШЕЙ стратегии
+        # Преобразуем элементы в строки перед join для защиты от ошибок типа данных
+        steps_str = ', '.join(str(s) for s in chosen_strategy.get('steps', []))
+        pros_str = ', '.join(str(p) for p in chosen_strategy.get('pros', []))
+        cons_str = ', '.join(str(c) for c in chosen_strategy.get('cons', []))
+        
         system_prompt = f"""Ты — рефлексирующее ядро агента '{self.name}' ({self.role}).
-        Ты выбрал стратегию: {chosen_strategy['strategy_name']}.
-        План: {', '.join(chosen_strategy['steps'])}
-        Преимущества: {', '.join(chosen_strategy['pros'])}
-        Риски: {', '.join(chosen_strategy['cons'])}
+        Ты выбрал стратегию: {chosen_strategy.get('strategy_name', 'Неизвестно')}.
+        План: {steps_str}
+        Преимущества: {pros_str}
+        Риски: {cons_str}
         
         Текущее состояние мира:
         {json.dumps(self.world_model.get_state(), indent=2, ensure_ascii=False)}
@@ -1017,11 +1054,24 @@ class Agent:
 
         # 1. Рефлексия
         reflection = await self.think_and_simulate(task, context)
+        
+        # Защита от случая когда reflection это список вместо словаря
+        if isinstance(reflection, list):
+            logger.warning(f"[{self.name}] Рефлексия вернула список вместо словаря, используем fallback")
+            reflection = {
+                "feasible": True,
+                "missing_requirements": [],
+                "pre_action_plan": [],
+                "risk_assessment": "unknown",
+                "optimized_strategy": str(reflection)
+            }
+        
         logger.info(f"[{self.name}] ✅ Выполнимо: {reflection.get('feasible')}")
         logger.info(f"[{self.name}] ⚠️ Риски: {reflection.get('risk_assessment')}")
 
         # 2. Предварительное исправление (Self-Healing)
-        if reflection.get('missing_requirements'):
+        missing = reflection.get('missing_requirements')
+        if missing and isinstance(missing, list):
             logger.info(f"[{self.name}] ❌ Нехватает: {reflection['missing_requirements']}")
             if reflection.get('pre_action_plan'):
                 logger.info(f"[{self.name}] 🔧 Запуск плана восстановления...")
