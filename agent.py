@@ -521,6 +521,143 @@ class GraphOrchestrator:
 
         return final_report
 
+    async def execute_graph_stream(self, main_task: str, planner_agent, image_data=None):
+        """
+        Асинхронный генератор для стриминга результатов выполнения графа.
+        1. Планирование -> статус 'planning'
+        2. Выполнение узлов -> статусы 'tool_use', 'memory_search', 'code_execution', etc.
+        3. Формирование ответа -> статус 'response'
+        """
+        # Шаг 1: Планирование
+        yield {'type': 'status', 'status': 'planning'}
+        
+        plan_prompt = f"""
+        Ты главный архитектор Nexus. Твоя задача: разбить задачу '{main_task}' на пошаговый план (граф).
+        Доступные агенты: {list(self.agents.keys())}.
+        Инструменты системы: {list(TOOLS.keys())}.
+
+        Верни ТОЛЬКО JSON список шагов. Каждый шаг:
+        {{
+            "id": 0,
+            "description": "Что сделать",
+            "agent": "Имя агента или 'system_tool'",
+            "depends_on": [список id предыдущих шагов]
+        }}
+        Если нужны системные команды (установка SDK, компиляция), используй агента 'System' или инструмент напрямую.
+        """
+
+        agent_list = list(self.agents.values())
+        if not agent_list:
+            yield {'type': 'error', 'text': 'Нет активных агентов для планирования.'}
+            return
+
+        planner = agent_list[0]
+        ctx = await memory.get_context(main_task.split())
+        
+        logger.info("[ORCHESTRATOR/STREAM] Запуск планировщика...")
+        plan_result = await planner.think_and_act(plan_prompt, ctx, [], image_data)
+
+        # Парсинг плана
+        try:
+            clean_json = re.search(r'\[.*\]', plan_result, re.DOTALL)
+            if clean_json:
+                plan_data = json.loads(clean_json.group())
+            else:
+                plan_data = json.loads(plan_result)
+
+            logger.info(f"[ORCHESTRATOR/STREAM] План получен: {len(plan_data)} шагов")
+            
+            for step in plan_data:
+                nid = self.create_node(step['description'], step.get('agent'))
+                if 'depends_on' in step:
+                    for dep in step['depends_on']:
+                        self.add_dependency(dep, nid)
+                        
+            logger.info("[ORCHESTRATOR/STREAM] Граф задач построен")
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR/STREAM] Ошибка парсинга плана: {e}, используем fallback")
+            self.create_node(main_task, agent_list[0].name)
+
+        # Шаг 2: Выполнение графа со стримингом
+        completed = set()
+        iteration = 0
+        
+        while len(completed) < len(self.nodes):
+            iteration += 1
+            if iteration > 50:
+                logger.error("[ORCHESTRATOR/STREAM] Превышено максимальное количество итераций")
+                break
+                
+            ready_nodes = []
+            for node in self.nodes.values():
+                if node.status == "pending":
+                    if all(dep in completed for dep in node.dependencies):
+                        ready_nodes.append(node)
+
+            if not ready_nodes:
+                logger.warning("[ORCHESTRATOR/STREAM] Нет готовых узлов, выход из цикла")
+                break
+
+            logger.info(f"[ORCHESTRATOR/STREAM] Запуск {len(ready_nodes)} узлов параллельно")
+            
+            # Стримим статус выполнения узлов
+            for node in ready_nodes:
+                node.status = "running"
+                yield {'type': 'status', 'status': 'tool_use', 'node_id': node.id, 'description': node.description}
+            
+            # Параллельный запуск с перехватом результатов
+            tasks = []
+            for node in ready_nodes:
+                tasks.append(self._execute_node_stream(node, main_task))
+            
+            # Собираем результаты по мере готовности
+            for coro in asyncio.as_completed(tasks):
+                result = await coro
+                node = result['node']
+                res = result['result']
+                
+                node.result = res
+                node.status = "done" if "Ошибка" not in res else "failed"
+                completed.add(node.id)
+                
+                # Отправляем результат узла
+                yield {'type': 'message', 'text': f"✅ Узел {node.id}: {node.description}\n{res[:200]}"}
+                
+                await memory.save_episode(f"Node-{node.id}", f"{node.description}: {res[:100]}", node.status=="done")
+                logger.info(f"[ORCHESTRATOR/STREAM] Узел {node.id} завершен со статусом: {node.status}")
+
+        # Сбор финального отчета
+        yield {'type': 'status', 'status': 'response'}
+        
+        final_report = "=== Отчет по графу задач ===\n"
+        success_count = sum(1 for n in self.nodes.values() if n.status == "done")
+        fail_count = len(self.nodes) - success_count
+        
+        for node in self.nodes.values():
+            final_report += f"[{node.status.upper()}] Шаг {node.id}: {node.description}\nРезультат: {node.result}\n\n"
+
+        logger.info(f"[ORCHESTRATOR/STREAM] Задача завершена: успешно={success_count}, провалено={fail_count}")
+        
+        # Отправляем финальный отчет
+        yield {'type': 'message', 'text': final_report}
+
+        # Самообучение
+        if all(n.status == "done" for n in self.nodes.values()):
+            learn_prompt = f"Задача '{main_task}' выполнена успешно. Извлеки 1-2 ключевых урока для будущего (коротко)."
+            lesson_text = await planner.think_and_act(learn_prompt, ctx, [])
+            await memory.save_lesson(main_task.split()[0], lesson_text)
+            logger.info("[ORCHESTRATOR/STREAM] Урок сохранен в память")
+            yield {'type': 'message', 'text': f"💡 Урок: {lesson_text[:200]}"}
+        else:
+            failed_ids = [n.id for n in self.nodes if n.status=='failed']
+            await memory.save_lesson("failure_analysis", f"Задача '{main_task}' провалилась на шагах: {failed_ids}")
+            logger.warning(f"[ORCHESTRATOR/STREAM] Сохранен анализ неудачи: шаги {failed_ids}")
+
+    async def _execute_node_stream(self, node: TaskNode, global_task: str):
+        """Обертка над _execute_node для возврата результата с информацией о узле"""
+        result = await self._execute_node(node, global_task)
+        return {'node': node, 'result': result}
+
     async def _execute_node(self, node: TaskNode, global_task: str):
         if node.assigned_agent and node.assigned_agent in self.agents:
             agent = self.agents[node.assigned_agent]
@@ -949,27 +1086,23 @@ async def add_agent():
     model = data.get('model')
     base_url = data.get('base_url')
     api_key = data.get('api_key', '')
-    skip_check = data.get('skip_check', False)  # Опция пропуска проверки
 
     if not all([name, role, model, base_url]):
-        return jsonify({"error": "Missing fields"}), 400
+        return jsonify({"error": "Заполните все поля: имя, роль, модель и URL сервера"}), 400
 
-    # Проверка доступности модели (опционально)
-    if not skip_check:
-        logger.info(f"[AGENT_ADD] Проверка доступности модели '{model}' на сервере '{base_url}'...")
-        availability = await Agent.check_model_availability(model, base_url, api_key)
-        
-        if not availability.get('available'):
-            logger.warning(f"[AGENT_ADD] Модель недоступна: {availability.get('message')}")
-            return jsonify({
-                "error": "Model not available",
-                "details": availability.get('message'),
-                "suggestion": "Проверьте название модели, URL сервера и API ключ. Или установите 'skip_check': true для добавления без проверки."
-            }), 400
-        
-        logger.info(f"[AGENT_ADD] Модель доступна: {availability.get('message')}")
-    else:
-        logger.info(f"[AGENT_ADD] Пропускаем проверку модели '{model}' по запросу пользователя.")
+    # Обязательная проверка доступности модели
+    logger.info(f"[AGENT_ADD] Проверка доступности модели '{model}' на сервере '{base_url}'...")
+    availability = await Agent.check_model_availability(model, base_url, api_key)
+    
+    if not availability.get('available'):
+        logger.warning(f"[AGENT_ADD] Модель недоступна: {availability.get('message')}")
+        return jsonify({
+            "error": "Model not available",
+            "details": availability.get('message'),
+            "suggestion": "Проверьте: 1) Название модели 2) URL сервера 3) API ключ 4) Сетевое подключение"
+        }), 400
+    
+    logger.info(f"[AGENT_ADD] ✅ Модель доступна: {availability.get('message')}")
 
     agent = Agent(name, role, model, base_url, api_key)
     agents_registry[name] = agent
@@ -977,8 +1110,8 @@ async def add_agent():
     orchestrator.agents = agents_registry
     return jsonify({
         "status": "success", 
-        "message": f"Agent {name} added",
-        "model_check": "Пропущено" if skip_check else availability.get('message')
+        "message": f"Агент '{name}' успешно добавлен",
+        "model_check": availability.get('message')
     })
 
 @app.route('/api/agents', methods=['GET'])
@@ -1008,6 +1141,57 @@ async def run():
 @app.route('/api/memory', methods=['GET'])
 async def get_memory():
     return jsonify({"short_term": memory.short_term})
+
+@app.route('/api/chat/stream', methods=['POST'])
+async def chat_stream():
+    """Стриминг ответов агента через Server-Sent Events"""
+    from quart import Response
+    
+    data = await request.json
+    task = data.get('task')
+    image_data = data.get('image_data')
+    
+    if not task:
+        return jsonify({"error": "Task missing"}), 400
+    
+    if not agents_registry:
+        return jsonify({"error": "No agents available"}), 400
+    
+    async def generate():
+        try:
+            # Отправляем статус начала
+            yield f"data: {json.dumps({'type': 'status', 'content': '🔄 Инициализация...'})}\n\n"
+            
+            # Получаем оркестратор и выполняем граф
+            status_messages = {
+                'planning': '🧠 Планирование...',
+                'tool_use': '🛠️ Использование инструментов...',
+                'memory_search': '🔍 Поиск в памяти...',
+                'code_execution': '💻 Выполнение кода...',
+                'analysis': '📊 Анализ...',
+                'response': '✍️ Формирование ответа...'
+            }
+            
+            # Запускаем выполнение графа с перехватом статусов
+            async for event in orchestrator.execute_graph_stream(task, None, image_data):
+                if isinstance(event, dict):
+                    if event.get('type') == 'status':
+                        status_key = event.get('status', 'processing')
+                        msg = status_messages.get(status_key, '⏳ Обработка...')
+                        yield f"data: {json.dumps({'type': 'status', 'content': msg})}\n\n"
+                    elif event.get('type') == 'message':
+                        yield f"data: {json.dumps({'type': 'message', 'content': event.get('text', '')})}\n\n"
+                else:
+                    # Обычный текст - считаем частью сообщения
+                    yield f"data: {json.dumps({'type': 'message', 'content': str(event)})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"[STREAM] Ошибка: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+    
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.before_serving
 async def init_db():
