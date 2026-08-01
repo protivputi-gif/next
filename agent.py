@@ -447,8 +447,15 @@ class GraphOrchestrator:
             logger.info(f"[ORCHESTRATOR] План получен: {len(plan_data)} шагов")
             
             # Построение графа
+            # Убеждаемся что plan_data это список словарей
+            if not isinstance(plan_data, list):
+                raise ValueError("План должен быть списком шагов")
+                
             for step in plan_data:
-                nid = self.create_node(step['description'], step.get('agent'))
+                if not isinstance(step, dict):
+                    logger.warning(f"[ORCHESTRATOR] Пропущен шаг неверного формата: {step}")
+                    continue
+                nid = self.create_node(step.get('description', str(step)), step.get('agent'))
                 if 'depends_on' in step:
                     for dep in step['depends_on']:
                         self.add_dependency(dep, nid)
@@ -823,11 +830,14 @@ class Agent:
 
     @staticmethod
     async def check_model_availability(model: str, base_url: str, api_key: str = "") -> Dict[str, Any]:
-        """Проверяет доступность модели на указанном сервере."""
+        """
+        Проверяет доступность модели на указанном сервере и её способность корректно отвечать.
+        Модель должна уметь возвращать валидный JSON по инструкции - это обязательное требование для instruct-моделей.
+        """
         headers = {"Content-Type": "application/json"}
         
         # Специальная обработка для NVIDIA Build (NGC)
-        is_nvidia = "nvidia.com" in base_url or api_key.startswith("nvapi-")
+        is_nvidia = "nvidia.com" in base_url or (api_key and api_key.startswith("nvapi-"))
         if is_nvidia and api_key and not api_key.startswith("nvapi-"):
             api_key = f"nvapi-{api_key}"
         
@@ -838,41 +848,51 @@ class Agent:
         if is_nvidia:
             base_url = "https://integrate.api.nvidia.com/v1"
         
-        # Сначала пробуем получить список доступных моделей
-        models_url = f"{base_url.rstrip('/')}/models"
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Увеличенный таймаут для NVIDIA API
-                timeout = 30 if is_nvidia else 10
-                async with session.get(models_url, headers=headers, timeout=timeout) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        available_models = [m.get('id', '') for m in data.get('data', [])]
-                        if model in available_models or any(model in m for m in available_models):
-                            return {"available": True, "message": f"Модель '{model}' доступна"}
-                        # Если точного совпадения нет, пробуем сделать тестовый запрос
-                        logger.info(f"[MODEL_CHECK] Модель '{model}' не найдена в списке, пробуем тестовый запрос...")
-                    else:
-                        logger.warning(f"[MODEL_CHECK] Не удалось получить список моделей: статус {resp.status}")
-        except Exception as e:
-            logger.warning(f"[MODEL_CHECK] Ошибка при получении списка моделей: {e}")
+        # Тестовый запрос: просим модель вернуть строго определённый JSON
+        # Это проверяет, что модель понимает инструкции и может форматировать ответ
+        # Instruct-модели должны точно следовать инструкциям
+        test_prompt = '''Вы должны вернуть ТОЛЬКО следующий JSON объект, без какого-либо дополнительного текста, объяснений или markdown:
+{"status": "ok", "model_test": true}'''
         
-        # Тестовый запрос к API completions для проверки доступности модели
-        test_url = f"{base_url.rstrip('/')}/chat/completions"
-        test_payload = {
+        test_messages = [
+            {"role": "system", "content": "Вы помощник, который возвращает только валидный JSON. Никакого другого текста. Вы instruct-модель и должны точно следовать инструкциям."},
+            {"role": "user", "content": test_prompt}
+        ]
+        
+        payload = {
             "model": model,
-            "messages": [{"role": "user", "content": "test"}],
-            "max_tokens": 1,
-            "stream": False
+            "messages": test_messages,
+            "temperature": 0.0,
+            "max_tokens": 50
         }
+        
+        # Выполняем тестовый запрос с требованием вернуть валидный JSON
+        test_url = f"{base_url.rstrip('/')}/chat/completions"
         
         try:
             async with aiohttp.ClientSession() as session:
                 # Увеличенный таймаут для NVIDIA API
                 timeout = 45 if is_nvidia else 15
-                async with session.post(test_url, json=test_payload, headers=headers, timeout=timeout) as resp:
+                async with session.post(test_url, json=payload, headers=headers, timeout=timeout) as resp:
                     if resp.status == 200:
-                        return {"available": True, "message": f"Модель '{model}' доступна и отвечает"}
+                        data = await resp.json()
+                        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+                        
+                        # Пытаемся распарсить ответ как JSON - это обязательное требование
+                        try:
+                            # Очищаем от markdown и лишнего текста
+                            json_match = re.search(r'\{[^}]*\}', content, re.DOTALL)
+                            if json_match:
+                                result = json.loads(json_match.group())
+                                if result.get('status') == 'ok' and result.get('model_test') is True:
+                                    return {"available": True, "message": f"Модель '{model}' доступна и корректно выполняет инструкции (возвращает валидный JSON)"}
+                            
+                            # Если не удалось распарсить идеально - модель не подходит для работы с агентом
+                            logger.warning(f"[MODEL_CHECK] Модель вернула некорректный формат: {content[:200]}")
+                            return {"available": False, "message": f"Модель '{model}' не является instruct-моделью (не вернула ожидаемый JSON формат). Используйте instruct-версию модели."}
+                        except (json.JSONDecodeError, AttributeError) as e:
+                            logger.warning(f"[MODEL_CHECK] Модель вернула невалидный JSON: {content[:200]}, ошибка: {e}")
+                            return {"available": False, "message": f"Модель '{model}' не является instruct-моделью (не смогла вернуть валидный JSON). Выберите другую instruct-модель."}
                     elif resp.status == 404:
                         return {"available": False, "message": f"Модель '{model}' не найдена на сервере"}
                     elif resp.status == 401:
@@ -1064,9 +1084,25 @@ class Agent:
                     elif response_json.get('action') in TOOLS:
                         tool_name = response_json['action']
                         args = response_json.get('args', {})
+                        
+                        # Валидация аргументов для инструментов
+                        if not isinstance(args, dict):
+                            logger.warning(f"[{self.name}] Аргументы инструмента должны быть словарем")
+                            args = {}
 
                         logger.info(f"[{self.name}] Вызов инструмента: {tool_name}")
-                        res = await TOOLS[tool_name]['func'](**args)
+                        
+                        # Маппинг имен аргументов для совместимости
+                        # run_shell_command ожидает 'cmd', но агент может передать 'command'
+                        if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
+                            args['cmd'] = args.pop('command')
+                        
+                        try:
+                            res = await TOOLS[tool_name]['func'](**args)
+                        except TypeError as te:
+                            # Если переданы неверные аргументы, пытаемся исправить
+                            logger.warning(f"[{self.name}] Ошибка аргументов инструмента: {te}")
+                            res = f"Ошибка вызова инструмента: неверные аргументы. Ожидались: {list(TOOLS[tool_name]['func'].__code__.co_varnames[:TOOLS[tool_name]['func'].__code__.co_argcount])}"
 
                         # Обновляем модель мира
                         self.world_model.update_state(tool_name, res)
@@ -1167,7 +1203,12 @@ async def run():
     # Прямой асинхронный запуск без ThreadPoolExecutor
     try:
         results = await orchestrator.execute_graph(task, None, image_data)
-        return jsonify({"results": results})
+        if isinstance(results, str) or isinstance(results, list):
+            return jsonify({"results": results})
+        elif isinstance(results, dict):
+            return jsonify(results)
+        else:
+            return jsonify({"results": str(results)})
     except Exception as e:
         logger.error(f"[API/RUN] Ошибка выполнения: {str(e)}")
         return jsonify({"error": str(e)}), 500
