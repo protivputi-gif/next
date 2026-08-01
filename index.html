@@ -20,11 +20,14 @@
         .message.agent { align-self: flex-start; background: #e2e8f0; color: var(--text); border-bottom-left-radius: 4px; }
         .message.system { align-self: center; background: #fef3c7; color: #92400e; font-size: 0.9em; }
         .chat-input-area { padding: 20px; background: var(--card); border-top: 1px solid #e2e8f0; }
-        .chat-input-wrapper { display: flex; gap: 10px; align-items: flex-end; }
-        .chat-input { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; resize: none; font-family: inherit; }
-        .send-btn { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .send-btn:hover { opacity: 0.9; }
-        .send-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        .chat-input-wrapper { display: flex; gap: 10px; align-items: flex-end; position: relative; }
+        .chat-input { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; resize: none; font-family: inherit; min-height: 44px; max-height: 200px; overflow-y: auto; transition: border-color 0.2s, box-shadow 0.2s; }
+        .chat-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        .send-btn { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; min-width: 50px; }
+        .send-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .send-btn:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+        .clear-btn { position: absolute; right: 60px; bottom: 18px; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2em; padding: 4px; border-radius: 50%; display: none; }
+        .clear-btn:hover { color: var(--danger); background: #fee2e2; }
         
         /* Sidebar Styles */
         .sidebar h2 { margin-top: 0; color: var(--primary); display: flex; align-items: center; gap: 10px; font-size: 1.2em; }
@@ -78,6 +81,7 @@
             
             <div class="chat-input-wrapper">
                 <textarea id="task-input" class="chat-input" rows="2" placeholder="Опишите задачу (напр. 'Создай Android приложение с кнопкой, собери его и проверь логи')..."></textarea>
+                <button type="button" class="clear-btn" id="clear-btn" onclick="clearInput()" title="Очистить">✕</button>
                 <button onclick="runTask()" id="run-btn" class="send-btn">➤</button>
             </div>
         </div>
@@ -145,14 +149,12 @@
     }
 
     async function addAgent() {
-        const skipCheck = false; // Проверка модели теперь обязательна
         const data = {
             name: document.getElementById('agent-name').value,
             role: document.getElementById('agent-role').value,
             model: document.getElementById('agent-model').value,
             base_url: document.getElementById('agent-url').value,
             api_key: document.getElementById('agent-key').value,
-            skip_check: skipCheck
         };
 
         if(!data.name || !data.role || !data.model || !data.base_url) { 
@@ -169,7 +171,7 @@
         resultDiv.style.display = 'block';
         resultDiv.style.background = '#eff6ff';
         resultDiv.style.color = '#1e40af';
-        resultDiv.innerHTML = '🔄 Подключение к серверу моделей и проверка доступности...';
+        resultDiv.innerHTML = '🔄 Тестирование модели: проверка способности выполнять инструкции и возвращать валидный JSON...';
 
         const res = await fetch('/api/agents', {
             method: 'POST',
@@ -323,6 +325,19 @@
     // Отправка по Enter (без Shift)
     document.addEventListener('DOMContentLoaded', function() {
         const taskInput = document.getElementById('task-input');
+        const clearBtn = document.getElementById('clear-btn');
+        
+        // Авто-расширение textarea
+        taskInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+            
+            // Показываем/скрываем кнопку очистки
+            if (clearBtn) {
+                clearBtn.style.display = this.value.trim() ? 'block' : 'none';
+            }
+        });
+        
         taskInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -337,6 +352,16 @@
                 statusDiv.textContent = statusText;
                 statusDiv.style.display = statusText ? 'block' : 'none';
             }
+        };
+        
+        // Функция очистки поля ввода
+        window.clearInput = function() {
+            taskInput.value = '';
+            taskInput.style.height = 'auto';
+            if (clearBtn) {
+                clearBtn.style.display = 'none';
+            }
+            taskInput.focus();
         };
     });
     
