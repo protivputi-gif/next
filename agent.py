@@ -613,13 +613,30 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
                 node.status = "running"
                 yield {'type': 'status', 'status': 'tool_use', 'node_id': node.id, 'description': node.description}
             
-            # Параллельный запуск с перехватом результатов
+            # Параллельный запуск с перехватом результатов и стримингом событий
             tasks = []
             for node in ready_nodes:
                 tasks.append(self._execute_node_stream(node, main_task))
             
-            # Собираем результаты по мере готовности
+            # Собираем результаты по мере готовности + обрабатываем стриминг
             for coro in asyncio.as_completed(tasks):
+                try:
+                    async for stream_result in coro:
+                        if isinstance(stream_result, dict) and stream_result.get('type') == 'node_event':
+                            # Стримим события (мысли, действия) в интерфейс
+                            event = stream_result['event']
+                            node_id = stream_result['node_id']
+                            
+                            if event.get('type') == 'thought':
+                                yield {'type': 'thought', 'content': event.get('content', ''), 'node_id': node_id}
+                            elif event.get('type') == 'action':
+                                yield {'type': 'action', 'content': event.get('content', ''), 'node_id': node_id}
+                            elif event.get('type') == 'error':
+                                yield {'type': 'error', 'content': event.get('content', ''), 'node_id': node_id}
+                except StopAsyncIteration:
+                    pass
+                
+                # Получаем финальный результат узла
                 result = await coro
                 node = result['node']
                 res = result['result']
@@ -662,9 +679,37 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
             logger.warning(f"[ORCHESTRATOR/STREAM] Сохранен анализ неудачи: шаги {failed_ids}")
 
     async def _execute_node_stream(self, node: TaskNode, global_task: str):
-        """Обертка над _execute_node для возврата результата с информацией о узле"""
-        result = await self._execute_node(node, global_task)
-        return {'node': node, 'result': result}
+        """Обертка над _execute_node для возврата результата с информацией о узле + стриминг"""
+        if node.assigned_agent and node.assigned_agent in self.agents:
+            agent = self.agents[node.assigned_agent]
+            ctx = await memory.get_context(global_task.split())
+            # Передаем результаты зависимостей в контекст
+            deps_context = ""
+            for dep_id in node.dependencies:
+                dep_node = self.nodes[dep_id]
+                deps_context += f"Результат шага {dep_id} ({dep_node.description}): {dep_node.result}\n"
+
+            full_prompt = f"{deps_context}\nВыполни шаг: {node.description}"
+            
+            # Используем стриминг-версию execute_with_reflection_stream
+            result_parts = []
+            try:
+                async for event in agent.execute_with_reflection_stream(full_prompt, ctx, [], None):
+                    if event.get('type') == 'message':
+                        result_parts.append(event.get('content', ''))
+                    elif event.get('type') in ['thought', 'action', 'error']:
+                        # Стримим события в интерфейс через yield
+                        yield {'type': 'node_event', 'node_id': node.id, 'event': event}
+            except Exception as e:
+                logger.error(f"[ORCHESTRATOR] Ошибка выполнения узла {node.id}: {e}")
+                result_parts.append(f"Ошибка: {str(e)}")
+            
+            result = ''.join(result_parts) if result_parts else "Нет результата"
+            yield {'node': node, 'result': result}
+        else:
+            # Если агент не назначен или не найден, пытаемся выполнить как системную команду через Tool
+            result = "Шаг требует назначения агента или инструмента."
+            yield {'node': node, 'result': result}
 
     async def _execute_node(self, node: TaskNode, global_task: str):
         if node.assigned_agent and node.assigned_agent in self.agents:
@@ -718,28 +763,62 @@ class TreeOfThoughts:
     @staticmethod
     async def generate_thoughts(agent, task, context, n_branches=3):
         """Generates N alternative solution paths"""
-        prompt = f"""You are the Nexus strategic core. Task: '{task}'.
+        prompt = f"""Task: {task}
 Context: {context}
 
 Generate exactly {n_branches} different approaches to solve this task.
-Each approach must differ in strategy (e.g., one via scripts, another via CLI, third via file checks).
+Each approach must be fundamentally different in methodology.
 
-Return ONLY a JSON array without any additional text:
-[{{"id":1,"strategy_name":"Strategy Name","steps":["step1"],"pros":["pro"],"cons":["con"]}}]"""
+Return ONLY a JSON array with this exact structure for each strategy:
+[
+  {{
+    "id": 1,
+    "strategy_name": "ShortName",
+    "steps": ["step1", "step2"],
+    "pros": ["pro1"],
+    "cons": ["con1"]
+  }}
+]
+
+IMPORTANT: 
+- Output MUST be valid JSON array starting with [ and ending with ]
+- NO text before the opening bracket
+- NO text after the closing bracket
+- NO markdown formatting (no ```json blocks)
+- NO explanations or comments
+
+Example output:
+[{{"id":1,"strategy_name":"PythonScript","steps":["analyze","write","run"],"pros":["fast"],"cons":["needs deps"]}}]
+
+Now output ONLY the JSON array:"""
         try:
-            messages = [{"role": "system", "content": prompt}]
+            messages = [
+                {"role": "system", "content": "You are a JSON generator. Return ONLY valid JSON arrays. Never include any text outside the JSON structure."},
+                {"role": "user", "content": prompt}
+            ]
             response = await agent._call_llm(messages)
-            # Improved cleaning: remove markdown and everything before/after JSON
-            clean_json = re.search(r'\[\s*\{.*\}\s*\]', response, re.DOTALL)
-            if clean_json:
-                thoughts = json.loads(clean_json.group())
-                # Validation and normalization
+            
+            # Clean response: remove markdown wrappers and extra text
+            clean_response = response.strip()
+            if clean_response.startswith('```json'):
+                clean_response = clean_response[7:]
+            if clean_response.startswith('```'):
+                clean_response = clean_response[3:]
+            if clean_response.endswith('```'):
+                clean_response = clean_response[:-3]
+            clean_response = clean_response.strip()
+            
+            # Find JSON array boundaries
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', clean_response, re.DOTALL)
+            if json_match:
+                thoughts = json.loads(json_match.group())
+                # Validate and normalize
                 validated = []
                 for t in thoughts:
                     if not isinstance(t, dict):
                         continue
                     validated.append({
-                        "id": t.get('id', len(validated)),
+                        "id": int(t.get('id', len(validated))),
                         "strategy_name": str(t.get('strategy_name', 'Strategy')),
                         "steps": [str(s) for s in t.get('steps', [])],
                         "pros": [str(p) for p in t.get('pros', [])],
@@ -749,15 +828,9 @@ Return ONLY a JSON array without any additional text:
         except Exception as e:
             logging.warning(f"ToT generation failed: {e}")
         
-        # Fallback if LLM fails
+        # Fallback
         return [
-            {
-                "id": 1, 
-                "strategy_name": "Standard Approach", 
-                "steps": ["Analyze", "Execute", "Verify"], 
-                "pros": ["Reliable"], 
-                "cons": ["Slow"]
-            }
+            {"id": 1, "strategy_name": "StandardApproach", "steps": ["Analyze", "Execute", "Verify"], "pros": ["Reliable"], "cons": ["Slow"]}
         ]
 
     @staticmethod
@@ -767,41 +840,80 @@ Return ONLY a JSON array without any additional text:
         max_score = -1
         
         for thought in thoughts:
-            # Convert elements to strings before join
             pros_str = ', '.join(str(p) for p in thought.get('pros', []))
             cons_str = ', '.join(str(c) for c in thought.get('cons', []))
             
-            eval_prompt = f"""You are the Nexus strategy evaluator. Evaluate the strategy "{thought.get('strategy_name', 'Unknown')}" for task '{task}'.
+            eval_prompt = f"""Strategy: "{thought.get('strategy_name', 'Unknown')}"
+Task: '{task}'
 Pros: {pros_str}
 Cons: {cons_str}
 
-Rate on a scale of 0-10:
-1. Success Probability
-2. Resource Efficiency
-3. Safety
+Rate on a scale of 0-10: success probability, efficiency, safety.
 
-Return ONLY JSON without any additional text: {{"scores":{{"success":0,"efficiency":0,"safety":0}},"total_score":0,"reasoning":"why"}}"""
+Return ONLY a JSON object with this exact structure:
+{{"scores":{{"success":0,"efficiency":0,"safety":0}},"total_score":0,"reasoning":"brief explanation"}}
+
+IMPORTANT:
+- Output MUST be valid JSON object starting with {{ and ending with }}
+- NO text before the opening brace
+- NO text after the closing brace  
+- NO markdown formatting (no ```json blocks)
+- NO explanations or comments
+
+Example output:
+{{"scores":{{"success":8,"efficiency":7,"safety":9}},"total_score":24,"reasoning":"Good balance"}}
+
+Now output ONLY the JSON object:"""
             try:
-                messages = [{"role": "system", "content": eval_prompt}]
+                messages = [
+                    {"role": "system", "content": "You are a JSON evaluator. Return ONLY valid JSON objects. Never include any text outside the JSON structure."},
+                    {"role": "user", "content": eval_prompt}
+                ]
                 response = await agent._call_llm(messages)
-                # Improved JSON cleaning
-                clean_json = re.search(r'\{\s*".*?\s*\}', response, re.DOTALL)
-                if clean_json:
-                    eval_data = json.loads(clean_json.group())
-                    score = eval_data.get('total_score', 0)
+                
+                # Clean response: remove markdown wrappers and extra text
+                clean_response = response.strip()
+                if clean_response.startswith('```json'):
+                    clean_response = clean_response[7:]
+                if clean_response.startswith('```'):
+                    clean_response = clean_response[3:]
+                if clean_response.endswith('```'):
+                    clean_response = clean_response[:-3]
+                clean_response = clean_response.strip()
+                
+                # Find JSON object boundaries by balancing braces
+                json_start = clean_response.find('{')
+                if json_start == -1:
+                    logging.warning(f"ToT evaluation: no JSON found")
+                    continue
+                
+                brace_count = 0
+                json_end = json_start
+                for i, char in enumerate(clean_response[json_start:], json_start):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = i + 1
+                            break
+                
+                if brace_count != 0:
+                    logging.warning(f"ToT evaluation: unbalanced braces")
+                    continue
                     
-                    if score > max_score:
-                        max_score = score
-                        best_choice = {
-                            "thought": thought,
-                            "evaluation": eval_data
-                        }
+                json_str = clean_response[json_start:json_end]
+                eval_data = json.loads(json_str)
+                score = eval_data.get('total_score', 0)
+                
+                if score > max_score:
+                    max_score = score
+                    best_choice = {"thought": thought, "evaluation": eval_data}
             except Exception as e:
                 logging.warning(f"ToT branch evaluation error: {e}")
                 continue
         
         if not best_choice:
-            # If evaluation fails, take the first branch
             return {"thought": thoughts[0], "evaluation": {"reasoning": "Selected by default"}}
             
         return best_choice
@@ -856,11 +968,12 @@ class Agent:
         # Тестовый запрос: просим модель вернуть строго определённый JSON
         # Это проверяет, что модель понимает инструкции и может форматировать ответ
         # Instruct-модели должны точно следовать инструкциям
-        test_prompt = '''Вы должны вернуть ТОЛЬКО следующий JSON объект, без какого-либо дополнительного текста, объяснений или markdown:
+        test_prompt = '''CRITICAL: Return ONLY this exact JSON object. NO text before. NO text after. NO markdown.
+
 {"status": "ok", "model_test": true}'''
         
         test_messages = [
-            {"role": "system", "content": "Вы помощник, который возвращает только валидный JSON. Никакого другого текста. Вы instruct-модель и должны точно следовать инструкциям."},
+            {"role": "system", "content": "You are a JSON-only API. NEVER output text outside JSON. NEVER use markdown. ALWAYS return perfectly formatted JSON."},
             {"role": "user", "content": test_prompt}
         ]
         
@@ -931,44 +1044,88 @@ class Agent:
         logger.info(f"[{self.name}] 💡 Обоснование: {evaluation.get('reasoning', 'Нет обоснования')}")
 
         # 3. Ментальная симуляция на основе ЛУЧШЕЙ стратегии
-        # Преобразуем элементы в строки перед join для защиты от ошибок типа данных
         steps_str = ', '.join(str(s) for s in chosen_strategy.get('steps', []))
         pros_str = ', '.join(str(p) for p in chosen_strategy.get('pros', []))
         cons_str = ', '.join(str(c) for c in chosen_strategy.get('cons', []))
         
-        system_prompt = f"""Ты — рефлексирующее ядро агента '{self.name}' ({self.role}).
-        Ты выбрал стратегию: {chosen_strategy.get('strategy_name', 'Неизвестно')}.
-        План: {steps_str}
-        Преимущества: {pros_str}
-        Риски: {cons_str}
-        
-        Текущее состояние мира:
-        {json.dumps(self.world_model.get_state(), indent=2, ensure_ascii=False)}
+        system_prompt = f"""You are the reflexive core of agent '{self.name}' with role: {self.role}.
 
-        Задача: {task}
-        
-        Проведи финальную проверку выбранного плана:
-        1. Есть ли скрытые зависимости?
-        2. Хватает ли прав доступа?
-        3. Нужна ли установка пакетов?
+Selected strategy: {chosen_strategy.get('strategy_name', 'Unknown')}
+Plan steps: {steps_str}
+Advantages: {pros_str}
+Risks: {cons_str}
 
-        Верни ТОЛЬКО JSON:
-        {{
-            "feasible": boolean,
-            "missing_requirements": ["список недостающего"],
-            "pre_action_plan": ["шаги по исправлению"],
-            "risk_assessment": "high/medium/low",
-            "optimized_strategy": "детализированный план на основе выбранной ветки"
-        }}
-        """
+Current world state:
+{json.dumps(self.world_model.get_state(), indent=2, ensure_ascii=False)}
 
-        messages = [{"role": "system", "content": system_prompt}]
+Task to analyze: {task}
+
+Perform final validation of the selected plan:
+1. Are there hidden dependencies?
+2. Are access permissions sufficient?
+3. Is package installation required?
+
+Return ONLY a valid JSON object with this exact structure:
+{{
+    "feasible": true/false,
+    "missing_requirements": ["list of missing items"],
+    "pre_action_plan": ["steps to fix"],
+    "risk_assessment": "high/medium/low",
+    "optimized_strategy": "detailed plan based on chosen branch"
+}}
+
+IMPORTANT:
+- Output MUST be valid JSON object starting with {{ and ending with }}
+- NO text before the opening brace
+- NO text after the closing brace
+- NO markdown formatting (no ```json blocks)
+- NO explanations or comments
+
+Example output:
+{{"feasible":true,"missing_requirements":[],"pre_action_plan":[],"risk_assessment":"low","optimized_strategy":"Execute step by step"}}
+
+Now output ONLY the JSON object:"""
+
+        messages = [
+            {"role": "system", "content": "You are a JSON generator. Return ONLY valid JSON objects. Never include any text outside the JSON structure."},
+            {"role": "user", "content": system_prompt}
+        ]
         response = await self._call_llm(messages)
 
         try:
-            clean_json = response.replace('```json', '').replace('```', '').strip()
-            simulation_result = json.loads(clean_json)
-            # Добавляем информацию о выбранной стратегии в результат
+            # Clean response: remove markdown wrappers
+            clean_response = response.strip()
+            if clean_response.startswith('```json'):
+                clean_response = clean_response[7:]
+            if clean_response.startswith('```'):
+                clean_response = clean_response[3:]
+            if clean_response.endswith('```'):
+                clean_response = clean_response[:-3]
+            clean_response = clean_response.strip()
+            
+            # Find JSON object boundaries
+            json_start = clean_response.find('{')
+            if json_start == -1:
+                raise json.JSONDecodeError("No JSON object found", clean_response, 0)
+            
+            brace_count = 0
+            json_end = json_start
+            for i, char in enumerate(clean_response[json_start:], json_start):
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
+            
+            if brace_count != 0:
+                raise json.JSONDecodeError("Unbalanced braces", clean_response, 0)
+            
+            json_str = clean_response[json_start:json_end]
+            simulation_result = json.loads(json_str)
+            
+            # Add chosen strategy info
             simulation_result['chosen_tot_strategy'] = chosen_strategy
             logger.info(f"[{self.name}] Рефлексия завершена: выполнимо={simulation_result.get('feasible')}, риск={simulation_result.get('risk_assessment')}")
             return simulation_result
@@ -1051,28 +1208,66 @@ class Agent:
                 for step in reflection['pre_action_plan']:
                     # Попытка автоматически установить пакеты
                     if "install" in step.lower() or "package" in step.lower():
-                        # Извлекаем имя пакета (упрощенно)
-                        pkg_match = re.search(r'[\w-]+', step)
-                        if pkg_match:
-                            pkg = pkg_match.group(0)
+                        # Извлекаем имена пакетов через более надежный regex
+                        # Ищем паттерны: "requests", "beautifulsoup4", "pip install X"
+                        # Улучшенный regex: ищем только слова после "install" или в списке
+                        pkg_matches = []
+                        
+                        # Паттерн 1: pip install package1 package2
+                        pip_matches = re.findall(r'pip\s+install\s+([a-zA-Z][a-zA-Z0-9_-]+(?:\s+[a-zA-Z][a-zA-Z0-9_-]+)*)', step, re.IGNORECASE)
+                        for match in pip_matches:
+                            pkg_matches.extend(match.split())
+                        
+                        # Паттерн 2: просто названия пакетов в контексте установки
+                        if not pkg_matches:
+                            # Ищем известные пакеты Python
+                            known_pkgs = ['requests', 'beautifulsoup4', 'bs4', 'numpy', 'pandas', 'flask', 'django', 'pytest', 'aiohttp', 'aiosqlite', 'quart']
+                            for pkg in known_pkgs:
+                                if pkg in step.lower():
+                                    pkg_matches.append(pkg)
+                        
+                        # Паттерн 3: любые слова после "install" кроме служебных
+                        if not pkg_matches:
+                            words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9_-]{2,}\b', step)
+                            skip_words = ['pip', 'install', 'package', 'packages', 'the', 'and', 'or', 'need', 'to', 'following', 'below', 'must', 'should', 'required', 'dependencies']
+                            pkg_matches = [w for w in words if w.lower() not in skip_words]
+                        
+                        for pkg in pkg_matches:
+                            # Пропускаем служебные слова и дубликаты
+                            if pkg.lower() in ['pip', 'install', 'package', 'packages', 'the', 'and', 'or']:
+                                continue
+                            logger.info(f"[{self.name}] Попытка установки пакета: {pkg}")
                             res = await TOOLS['install_pkg']['func']("pip", pkg)
-                            logger.info(f"[{self.name}] Установка {pkg}: {res[:50]}")
+                            logger.info(f"[{self.name}] Установка {pkg}: {res[:100]}")
 
         # 3. Main ReAct loop
-        system_prompt = f"""You are agent '{self.name}'. Role: {self.role}.
-Strategy (from reflection): {reflection.get('optimized_strategy')}
+        system_prompt = f"""You are agent '{self.name}' with role: {self.role}.
+
+Strategy from reflection: {reflection.get('optimized_strategy')}
 World state: {json.dumps(self.world_model.get_state(), ensure_ascii=False)}
 
-Available tools: {list(TOOLS.keys())}.
+Available tools: {list(TOOLS.keys())}
 Context: {context}
 History: {history}
 
 TASK: {task}
 
-INSTRUCTION - Return ONLY JSON without any additional text:
-1. To call a tool: {{"action":"tool_name","args":{{...}}}}
-2. To complete: {{"action":"final_answer","content":"..."}}
-3. No markdown, no explanation outside JSON."""
+CRITICAL INSTRUCTIONS - JSON OUTPUT ONLY:
+1. You MUST output ONLY a valid JSON object. NO text before '{{'. NO text after '}}'. NO markdown formatting.
+2. To call a tool, use this exact format:
+   - For install_pkg: {{"action":"install_pkg","args":{{"manager":"pip","package":"exact_package_name"}}}}
+     IMPORTANT: package must be the actual package name like "requests" or "beautifulsoup4", NOT "install_pkg" or "Install"
+   - For run_shell: {{"action":"run_shell","args":{{"cmd":"command here"}}}}
+   - For run_python: {{"action":"run_python","args":{{"code":"print('hello')"}}}}
+3. To complete task: {{"action":"final_answer","content":"your answer"}}
+4. NEVER include explanations, introductions, or markdown code blocks
+
+Example VALID outputs:
+{{"action":"install_pkg","args":{{"manager":"pip","package":"requests"}}}}
+{{"action":"run_python","args":{{"code":"print('hello')"}}}}
+{{"action":"final_answer","content":"Task completed successfully"}}
+
+Output ONLY the JSON object now:"""
 
         current_history = list(history)
         # Add task with image support
@@ -1096,11 +1291,28 @@ INSTRUCTION - Return ONLY JSON without any additional text:
                 try:
                     # Remove markdown and any text before/after JSON
                     clean_content = content.replace('```json', '').replace('```', '').strip()
-                    # Try to find JSON object
-                    json_match = re.search(r'\{\s*".*?\s*\}', clean_content, re.DOTALL)
-                    if json_match:
-                        clean_content = json_match.group()
-                    response_json = json.loads(clean_content)
+                    
+                    # Robust JSON extraction using brace balancing
+                    json_start = clean_content.find('{')
+                    if json_start == -1:
+                        raise json.JSONDecodeError("No JSON object found", content, 0)
+                    
+                    brace_count = 0
+                    json_end = json_start
+                    for i, char in enumerate(clean_content[json_start:], json_start):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                json_end = i + 1
+                                break
+                    
+                    if brace_count != 0:
+                        raise json.JSONDecodeError("Unbalanced braces in JSON", content, 0)
+                    
+                    json_str = clean_content[json_start:json_end]
+                    response_json = json.loads(json_str)
 
                     if response_json.get('action') == 'final_answer':
                         logger.info(f"[{self.name}] Task completed successfully")
@@ -1187,9 +1399,248 @@ INSTRUCTION - Return ONLY JSON without any additional text:
         logger.warning(f"[{self.name}] Max iterations exceeded ({max_iterations})")
         return "Max iterations exceeded."
 
+    async def execute_with_reflection_stream(self, task, context, history, image_data=None):
+        """ReAct + Reflection loop with streaming support"""
+        # Phase 1: Reflection & Planning
+        logger.info(f"[{self.name}] 🧠 Начало фазы рефлексии...")
+        
+        reflection_prompt = f"""You are {self.role}. Analyze the task and plan your approach.
+
+Task: {task}
+Context: {context}
+World state: {json.dumps(self.world_model.get_state(), ensure_ascii=False)}
+
+Return ONLY a JSON object with this exact structure:
+{{
+  "feasible": true/false,
+  "risk_level": "low/medium/high",
+  "missing_requirements": ["item1", "item2"],
+  "optimized_strategy": "your refined approach"
+}}
+
+Output ONLY the JSON object now:"""
+
+        messages = [{"role": "system", "content": f"You are {self.role}. Output ONLY valid JSON."}, 
+                    {"role": "user", "content": reflection_prompt}]
+        
+        try:
+            reflection_content = await self._call_llm(messages, image_data=None)
+            # Clean and parse JSON
+            clean_json = re.search(r'\\{.*\\}', reflection_content, re.DOTALL)
+            if clean_json:
+                reflection = json.loads(clean_json.group())
+            else:
+                reflection = {"feasible": True, "risk_level": "medium", "missing_requirements": [], "optimized_strategy": reflection_content[:200]}
+            
+            logger.info(f"[{self.name}] Рефлексия завершена: выполнимо={reflection.get('feasible')}, риск={reflection.get('risk_level')}")
+            
+            # Stream reflection result
+            yield {'type': 'thought', 'content': f"📋 Анализ задачи:\n- Выполнимо: {reflection.get('feasible')}\n- Риск: {reflection.get('risk_level')}\n- Стратегия: {reflection.get('optimized_strategy', 'N/A')}"}
+            
+            if not reflection.get('feasible', True):
+                missing = reflection.get('missing_requirements', [])
+                if missing:
+                    yield {'type': 'thought', 'content': f"⚠️ Нехватает: {', '.join(missing)}"}
+                    # Try recovery
+                    yield {'type': 'status', 'status': 'recovery'}
+                    recovery_prompt = f"Task requires: {missing}. Plan recovery steps (JSON array of actions)."
+                    recovery_result = await self.execute_with_reflection_stream(recovery_prompt, context, [], None)
+                    async for item in recovery_result:
+                        yield item
+                        
+        except Exception as e:
+            logger.error(f"[{self.name}] Reflection error: {e}")
+            yield {'type': 'thought', 'content': f"⚠️ Ошибка рефлексии: {str(e)}"}
+            reflection = {"feasible": True, "risk_level": "medium", "missing_requirements": [], "optimized_strategy": "Continue despite reflection error"}
+
+        # Phase 2: Tree of Thoughts
+        logger.info(f"[{self.name}] 🌳 Запуск Tree of Thoughts для задачи: {task[:50]}...")
+        thoughts = await TreeOfThoughts.generate_thoughts(self, task, context)
+        logger.info(f"[{self.name}] Сгенерировано {len(thoughts)} стратегий.")
+        
+        # Stream thoughts
+        thought_summary = "💭 Возможные подходы:\\n"
+        for i, t in enumerate(thoughts, 1):
+            thought_summary += f"{i}. {t.get('strategy_name', f'Strategy {i}')}: {', '.join(t.get('steps', [])[:2])}\\n"
+        yield {'type': 'thought', 'content': thought_summary}
+        
+        best_strategy = await TreeOfThoughts.evaluate_thoughts(self, task, thoughts)
+        logger.info(f"[{self.name}] ✅ Выбрана стратегия: {best_strategy.get('strategy_name', 'Unknown')}")
+        
+        yield {'type': 'thought', 'content': f"✅ Выбран подход: {best_strategy.get('strategy_name', 'Unknown')}\\nОбоснование: {best_strategy.get('pros', ['N/A'])[0] if best_strategy.get('pros') else 'N/A'}"}
+
+        # Phase 3: ReAct Loop with streaming
+        system_prompt = f"""You are {self.role}. Use tools to complete the task.
+
+Strategy from reflection: {reflection.get('optimized_strategy')}
+World state: {json.dumps(self.world_model.get_state(), ensure_ascii=False)}
+
+Available tools: {list(TOOLS.keys())}
+Context: {context}
+History: {history}
+
+TASK: {task}
+
+CRITICAL INSTRUCTIONS - JSON OUTPUT ONLY:
+1. You MUST output ONLY a valid JSON object. NO text before '{{'. NO text after '}}'. NO markdown formatting.
+2. To call a tool, use this exact format:
+   - For install_pkg: {{"action":"install_pkg","args":{{"manager":"pip","package":"exact_package_name"}}}}
+     IMPORTANT: package must be the actual package name like "requests" or "beautifulsoup4", NOT "install_pkg" or "Install"
+   - For run_shell: {{"action":"run_shell","args":{{"cmd":"command here"}}}}
+   - For run_python: {{"action":"run_python","args":{{"code":"print('hello')"}}}}
+3. To complete task: {{"action":"final_answer","content":"your answer"}}
+4. NEVER include explanations, introductions, or markdown code blocks
+
+Example VALID outputs:
+{{"action":"install_pkg","args":{{"manager":"pip","package":"requests"}}}}
+{{"action":"run_python","args":{{"code":"print('hello')"}}}}
+{{"action":"final_answer","content":"Task completed successfully"}}
+
+Output ONLY the JSON object now:"""
+
+        current_history = list(history)
+        user_msg = {"role": "user", "content": task}
+        current_history.append(user_msg)
+
+        max_iterations = 10
+        for i in range(max_iterations):
+            try:
+                logger.debug(f"[{self.name}] ReAct iteration {i+1}/{max_iterations}")
+                
+                img_to_pass = image_data if i == 0 and image_data else None
+                api_messages = [{"role": "system", "content": system_prompt}] + current_history
+
+                content = await self._call_llm(api_messages, image_data=img_to_pass)
+
+                # Parse response
+                try:
+                    clean_content = content.replace('```json', '').replace('```', '').strip()
+                    
+                    json_start = clean_content.find('{')
+                    if json_start == -1:
+                        raise json.JSONDecodeError("No JSON object found", content, 0)
+                    
+                    brace_count = 0
+                    json_end = json_start
+                    for idx, char in enumerate(clean_content[json_start:], json_start):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                json_end = idx + 1
+                                break
+                    
+                    if brace_count != 0:
+                        raise json.JSONDecodeError("Unbalanced braces in JSON", content, 0)
+                    
+                    json_str = clean_content[json_start:json_end]
+                    response_json = json.loads(json_str)
+
+                    if response_json.get('action') == 'final_answer':
+                        logger.info(f"[{self.name}] Task completed successfully")
+                        self.world_model.update_state("final_answer", response_json['content'])
+                        yield {'type': 'action', 'content': f"✅ Завершение задачи"}
+                        yield {'type': 'message', 'content': response_json['content']}
+                        yield {'result': response_json['content']}
+                        return
+
+                    elif response_json.get('action') in TOOLS:
+                        tool_name = response_json['action']
+                        args = response_json.get('args', {})
+                        
+                        if not isinstance(args, dict):
+                            logger.warning(f"[{self.name}] Tool arguments must be a dictionary")
+                            args = {}
+
+                        # Stream action start
+                        yield {'type': 'action', 'content': f"🛠️ Инструмент: {tool_name}\\nАргументы: {json.dumps(args, ensure_ascii=False)[:200]}"}
+                        
+                        logger.info(f"[{self.name}] Calling tool: {tool_name}")
+                        
+                        # Argument name mapping
+                        if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
+                            args['cmd'] = args.pop('command')
+                        if tool_name == 'install_pkg':
+                            if 'pkg_manager' in args and 'manager' not in args:
+                                args['manager'] = args.pop('pkg_manager')
+                            if 'pkg_name' in args and 'package' not in args:
+                                args['package'] = args.pop('pkg_name')
+                        
+                        try:
+                            res = await TOOLS[tool_name]['func'](**args)
+                        except TypeError as te:
+                            logger.warning(f"[{self.name}] Tool argument error: {te}")
+                            res = f"Tool call error: invalid arguments. Expected: {list(TOOLS[tool_name]['func'].__code__.co_varnames[:TOOLS[tool_name]['func'].__code__.co_argcount])}"
+
+                        # Stream result
+                        yield {'type': 'action', 'content': f"📤 Результат {tool_name}:\\n{res[:300]}"}
+                        
+                        self.world_model.update_state(tool_name, res)
+
+                        current_history.append({"role": "assistant", "content": content})
+                        current_history.append({"role": "user", "content": f"Result of {tool_name}: {res}"})
+                        continue
+                    else:
+                        action_val = response_json.get('action', 'unknown')
+                        logger.warning(f"[{self.name}] Unknown action: {action_val}. Available: {list(TOOLS.keys())}")
+                        matched_tool = None
+                        for t in TOOLS.keys():
+                            if t in action_val or action_val in t:
+                                matched_tool = t
+                                break
+                        if matched_tool:
+                            logger.info(f"[{self.name}] Corrected action: {action_val} -> {matched_tool}")
+                            response_json['action'] = matched_tool
+                            args = response_json.get('args', {})
+                            if not isinstance(args, dict):
+                                args = {}
+                            if matched_tool == 'run_shell' and 'command' in args and 'cmd' not in args:
+                                args['cmd'] = args.pop('command')
+                            res = await TOOLS[matched_tool]['func'](**args)
+                            self.world_model.update_state(matched_tool, res)
+                            current_history.append({"role": "assistant", "content": content})
+                            current_history.append({"role": "user", "content": f"Result of {matched_tool}: {res}"})
+                            continue
+                        yield {'type': 'error', 'content': f"Unknown action: {action_val}. Available tools: {list(TOOLS.keys())}"}
+                        yield {'result': f"Unknown action: {action_val}. Available tools: {list(TOOLS.keys())}"}
+                        return
+
+                except json.JSONDecodeError as je:
+                    logger.error(f"[{self.name}] JSON parsing error: {je}. Model response: {content[:200]}")
+                    match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if match:
+                        try:
+                            response_json = json.loads(match.group())
+                            if response_json.get('action') == 'final_answer':
+                                logger.info(f"[{self.name}] Task completed (extracted from text)")
+                                yield {'type': 'message', 'content': response_json['content']}
+                                yield {'result': response_json['content']}
+                                return
+                        except: pass
+                    yield {'type': 'error', 'content': f"Model returned non-JSON: {content[:200]}"}
+                    yield {'result': f"Model returned non-JSON: {content[:200]}"}
+                    return
+
+            except Exception as e:
+                logger.error(f"[{self.name}] Execution error: {str(e)}")
+                yield {'type': 'error', 'content': f"Execution error: {str(e)}"}
+                yield {'result': f"Execution error: {str(e)}"}
+                return
+
+        logger.warning(f"[{self.name}] Max iterations exceeded ({max_iterations})")
+        yield {'type': 'error', 'content': "Max iterations exceeded."}
+        yield {'result': "Max iterations exceeded."}
+        return
+
     # Для обратной совместимости со старым кодом оркестратора
     async def think_and_act(self, task, context, history, image_data=None):
-        return await self.execute_with_reflection(task, context, history, image_data)
+        # Collect all results from stream for backward compatibility
+        result_parts = []
+        async for event in self.execute_with_reflection_stream(task, context, history, image_data):
+            if event.get('type') == 'message':
+                result_parts.append(event.get('content', ''))
+        return ''.join(result_parts) if result_parts else "No result"
 
 # --- QUART ROUTES (ASYNC) ---
 

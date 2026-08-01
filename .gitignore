@@ -15,4 +15,40 @@ __pycache__/
 .env
 .env.local
 *.env.*
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.coverage.*
+.nox/
+.tox/
+
+# MyPy
+.mypy_cache/
+
+# Pytest
+.pytest_cache/
+
+# General temp files
+*.tmp
+*.swp
+*.swo
 ```

@@ -196,28 +196,29 @@
         </div>
     </div>
     
-    <button class="toggle-sidebar" onclick="toggleSidebar()" title="Настройки">⚙️</button>
+    <button class="toggle-sidebar" onclick="toggleSidebar()" title="Settings">⚙️</button>
     
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-title">Настройки агентов</div>
+            <div class="sidebar-title">Agent Settings</div>
             <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
         </div>
         <div class="sidebar-content">
             <div class="sidebar-section">
-                <h3>Добавить агента</h3>
+                <h3>Add Agent</h3>
                 <div class="form-group">
-                    <label>Имя *</label>
-                    <input type="text" id="agent-name" class="form-input" placeholder="Например: Coder">
+                    <label>Name *</label>
+                    <input type="text" id="agent-name" class="form-input" placeholder="e.g., Coder">
                 </div>
                 <div class="form-group">
-                    <label>Роль *</label>
-                    <input type="text" id="agent-role" class="form-input" placeholder="Например: Пишет и выполняет код">
+                    <label>Role *</label>
+                    <input type="text" id="agent-role" class="form-input" placeholder="e.g., You are the Nexus chief architect. Your task: break down complex problems into steps.">
+                    <div class="form-hint">Use English. Examples: "You are the Nexus chief architect", "Python developer who writes and executes code", "Web scraper specialist"</div>
                 </div>
                 <div class="form-group">
-                    <label>Модель *</label>
+                    <label>Model *</label>
                     <input type="text" id="agent-model" class="form-input" placeholder="meta/llama-3.1-8b-instruct">
-                    <div class="form-hint">NVIDIA: meta/llama-3.1-8b-instruct | Ollama: llama3</div>
+                    <div class="form-hint">NVIDIA: meta/llama-3.1-8b-instruct, meta/llama-3.3-70b-instruct, nvidia/nemotron-3-super-120b-a12b | Ollama: llama3.1:8b</div>
                 </div>
                 <div class="form-group">
                     <label>Base URL *</label>
@@ -227,14 +228,14 @@
                 <div class="form-group">
                     <label>API Key</label>
                     <input type="password" id="agent-key" class="form-input" placeholder="nvapi-...">
-                    <div class="form-hint"><a href="https://build.nvidia.com" target="_blank">Получить ключ NVIDIA</a>. Для Ollama оставьте пустым</div>
+                    <div class="form-hint"><a href="https://build.nvidia.com" target="_blank">Get NVIDIA API Key</a>. Leave empty for Ollama</div>
                 </div>
-                <button onclick="addAgent()" id="add-agent-btn" class="btn-primary">Создать агента</button>
+                <button onclick="addAgent()" id="add-agent-btn" class="btn-primary">Add Agent</button>
                 <div id="validation-result" class="validation-message"></div>
             </div>
             
             <div class="sidebar-section">
-                <h3>Активные агенты</h3>
+                <h3>Active Agents</h3>
                 <div id="agents-list"></div>
             </div>
             
@@ -468,10 +469,10 @@ async function addAgent() {
     
     if (!data.name) {
         nameInput.classList.add('error');
-        errors.push('• Имя агента обязательно');
+        errors.push('• Agent name is required');
     } else if (data.name.length < 2) {
         nameInput.classList.add('error');
-        errors.push('• Имя должно быть не менее 2 символов');
+        errors.push('• Name must be at least 2 characters');
     }
     
     if (!data.role) {
@@ -486,7 +487,7 @@ async function addAgent() {
     
     if (!data.base_url) {
         urlInput.classList.add('error');
-        errors.push('• Base URL обязателен');
+        errors.push('• Base URL is required');
     } else if (!isValidUrl(data.base_url)) {
         urlInput.classList.add('error');
         errors.push('• Неверный формат URL');
@@ -494,22 +495,22 @@ async function addAgent() {
     
     if (data.base_url.includes('nvidia') && !data.api_key) {
         keyInput.classList.add('error');
-        errors.push('• API Key обязателен для NVIDIA');
+        errors.push('• API Key is required for NVIDIA');
     }
     
     if (errors.length > 0) {
         resultDiv.style.display = 'block';
         resultDiv.className = 'validation-message error';
-        resultDiv.innerHTML = '<strong>Ошибка валидации:</strong><br>' + errors.join('<br>');
+        resultDiv.innerHTML = '<strong>Validation Error:</strong><br>' + errors.join('<br>');
         return;
     }
     
     // Test connection
     btn.disabled = true;
-    btn.textContent = '🔍 Проверка подключения...';
+    btn.textContent = '🔍 Testing connection...';
     resultDiv.style.display = 'block';
     resultDiv.className = 'validation-message info';
-    resultDiv.textContent = 'Проверка подключения к API...';
+    resultDiv.textContent = 'Testing API connection...';
     
     try {
         const response = await fetch('/api/agents', {
@@ -522,7 +523,7 @@ async function addAgent() {
         
         if (response.ok) {
             resultDiv.className = 'validation-message success';
-            resultDiv.innerHTML = '<strong>✅ Успешно!</strong><br>Агент "' + data.name + '" добавлен и готов к работе.';
+            resultDiv.innerHTML = '<strong>✅ Success!</strong><br>Agent "' + data.name + '" added and ready to work.';
             
             // Clear form
             nameInput.value = '';
@@ -532,16 +533,16 @@ async function addAgent() {
             keyInput.value = '';
             
             loadAgents();
-            addMessage('✅ Агент "' + data.name + '" успешно добавлен', 'system');
+            addMessage('✅ Agent "' + data.name + '" успешно добавлен', 'system');
         } else {
             throw new Error(responseData.error || 'Ошибка при создании агента');
         }
     } catch (error) {
         resultDiv.className = 'validation-message error';
-        resultDiv.innerHTML = '<strong>❌ Ошибка:</strong><br>' + error.message;
+        resultDiv.innerHTML = '<strong>❌ Error:</strong><br>' + error.message;
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Создать агента';
+        btn.textContent = 'Add Agent';
         setTimeout(() => {
             resultDiv.style.display = 'none';
         }, 10000);
@@ -635,6 +636,9 @@ async function runTask() {
         chatMessages.appendChild(streamContainer);
         activeStreamContainer = streamContainer;
         
+        // Scroll to bottom to show stream
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
         // Read stream
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -662,11 +666,11 @@ async function runTask() {
                             appendToSection('thoughts-content', eventData.content);
                         } else if (eventData.type === 'action') {
                             appendToSection('actions-content', eventData.content);
+                        } else if (eventData.type === 'error') {
+                            updateStreamStatus('❌ Error');
+                            appendToSection('result-content', 'Ошибка: ' + eventData.content);
                         } else if (eventData.type === 'done') {
                             updateStreamStatus('✅ Завершено');
-                        } else if (eventData.type === 'error') {
-                            updateStreamStatus('❌ Ошибка');
-                            appendToSection('result-content', 'Ошибка: ' + eventData.content);
                         }
                     } catch (parseError) {
                         console.warn('Failed to parse SSE data:', parseError);
@@ -704,7 +708,7 @@ async function loadMemory() {
             });
             memoryDiv.innerHTML = html;
         } else {
-            memoryDiv.innerHTML = '<div style="color:var(--text-tertiary);padding:16px;text-align:center;font-size:13px;">Память пуста</div>';
+            memoryDiv.innerHTML = '<div style="color:var(--text-tertiary);padding:16px;text-align:center;font-size:13px;">Memory is empty</div>';
         }
     } catch (error) {
         console.error('Error loading memory:', error);
