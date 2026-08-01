@@ -17,3 +17,35 @@
 2026-08-01 09:03:34,172 - NexusCore - INFO - [TOOL] Выполнение команды: pip install requests
 2026-08-01 09:03:36,714 - NexusCore - INFO - [TOOL] Команда выполнена, вывод: Requirement already satisfied: requests in /usr/local/lib/python3.12/site-packages (2.32.4)
 Requirement already satisfied: charset_normalizer<4,>=2 in /usr/local/lib/python3.12/site-packages (from req...
+2026-08-01 09:29:48,597 - NexusCore - INFO - Установка aiosqlite...
+2026-08-01 09:29:51,121 - NexusCore - INFO - Установка Quart...
+2026-08-01 09:29:54,177 - NexusCore - INFO - [GRAPH] Графовая память инициализирована (ожидание async загрузки).
+2026-08-01 09:29:54,179 - NexusCore - INFO - Starting Nexus Multi-Agent System with Graph Orchestrator (ASYNC)...
+2026-08-01 09:29:54,179 - NexusCore - INFO - Features: Auto-learning, Dynamic Graph Planning, Self-Healing, Tool Use.
+2026-08-01 09:29:54,179 - NexusCore - INFO - Logging enabled: all actions will be saved to nexus_agent.log
+2026-08-01 09:29:54,179 - NexusCore - INFO - Access web interface at http://127.0.0.1:5000
+2026-08-01 09:29:54,218 - NexusCore - INFO - [GRAPH] Загружено 0 узлов из базы.
+2026-08-01 09:29:54,218 - NexusCore - INFO - [GRAPH] База данных инициализирована и граф загружен (async).
+2026-08-01 09:29:54,220 - NexusCore - INFO - [INIT] База данных полностью инициализирована.
+2026-08-01 09:29:54,221 - asyncio - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-01 09:29:54,221 - hypercorn.error - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-01 09:30:22,498 - NexusCore - INFO - [AGENT_ADD] Проверка доступности модели 'llama3' на сервере 'http://localhost:11434'...
+2026-08-01 09:30:22,514 - NexusCore - WARNING - [AGENT_ADD] Модель недоступна: Ошибка подключения: Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 11434, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 11434)]
+2026-08-01 09:30:29,197 - NexusCore - INFO - [AGENT_ADD] Проверка доступности модели 'meta-llama/llama-3.1-8b-instruct' на сервере 'https://integrate.api.nvidia.com/v1'...
+2026-08-01 09:30:29,407 - NexusCore - WARNING - [AGENT_ADD] Модель недоступна: Модель 'meta-llama/llama-3.1-8b-instruct' не найдена на сервере
+2026-08-01 09:32:37,597 - NexusCore - INFO - [AGENT_ADD] Проверка доступности модели 'meta/llama-3.1-8b-instruct' на сервере 'https://integrate.api.nvidia.com/v1'...
+2026-08-01 09:32:37,817 - NexusCore - WARNING - [AGENT_ADD] Модель недоступна: Неверный API ключ или отсутствует авторизация. Для NVIDIA используйте ключ с префиксом 'nvapi-'
+2026-08-01 09:32:40,795 - NexusCore - INFO - [AGENT_ADD] Проверка доступности модели 'llama3' на сервере 'http://localhost:11434'...
+2026-08-01 09:32:40,814 - NexusCore - WARNING - [AGENT_ADD] Модель недоступна: Ошибка подключения: Cannot connect to host localhost:11434 ssl:default [Multiple exceptions: [Errno 111] Connect call failed ('::1', 11434, 0, 0), [Errno 111] Connect call failed ('127.0.0.1', 11434)]
+2026-08-01 09:33:07,863 - NexusCore - INFO - [GRAPH] Графовая память инициализирована (ожидание async загрузки).
+2026-08-01 09:33:07,875 - NexusCore - INFO - Starting Nexus Multi-Agent System with Graph Orchestrator (ASYNC)...
+2026-08-01 09:33:07,875 - NexusCore - INFO - Features: Auto-learning, Dynamic Graph Planning, Self-Healing, Tool Use.
+2026-08-01 09:33:07,875 - NexusCore - INFO - Logging enabled: all actions will be saved to nexus_agent.log
+2026-08-01 09:33:07,875 - NexusCore - INFO - Access web interface at http://127.0.0.1:5000
+2026-08-01 09:33:07,914 - NexusCore - INFO - [GRAPH] Загружено 0 узлов из базы.
+2026-08-01 09:33:07,915 - NexusCore - INFO - [GRAPH] База данных инициализирована и граф загружен (async).
+2026-08-01 09:33:07,916 - NexusCore - INFO - [INIT] База данных полностью инициализирована.
+2026-08-01 09:33:07,917 - asyncio - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-01 09:33:07,917 - hypercorn.error - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-01 09:33:10,717 - NexusCore - INFO - [AGENT_ADD] Проверка доступности модели 'meta/llama-3.1-8b-instruct' на сервере 'https://integrate.api.nvidia.com/v1'...
+2026-08-01 09:33:10,718 - NexusCore - WARNING - [AGENT_ADD] Модель недоступна: Для NVIDIA API требуется API ключ. Получите его на https://build.nvidia.com

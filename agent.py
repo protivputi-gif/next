@@ -865,6 +865,7 @@ class Agent:
         """
         Проверяет доступность модели на указанном сервере и её способность корректно отвечать.
         Модель должна уметь возвращать валидный JSON по инструкции - это обязательное требование для instruct-моделей.
+        Для NVIDIA API требуется API ключ с префиксом 'nvapi-'.
         """
         headers = {"Content-Type": "application/json"}
         
@@ -873,12 +874,14 @@ class Agent:
         if is_nvidia and api_key and not api_key.startswith("nvapi-"):
             api_key = f"nvapi-{api_key}"
         
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        
-        # Для NVIDIA Build используем их специфичный endpoint
+        # Для NVIDIA API ключ обязателен
         if is_nvidia:
             base_url = "https://integrate.api.nvidia.com/v1"
+            if not api_key:
+                return {"available": False, "message": "Для NVIDIA API требуется API ключ. Получите его на https://build.nvidia.com"}
+            headers["Authorization"] = f"Bearer {api_key}"
+        elif api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         
         # Тестовый запрос: просим модель вернуть строго определённый JSON
         # Это проверяет, что модель понимает инструкции и может форматировать ответ

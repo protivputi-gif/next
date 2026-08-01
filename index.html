@@ -613,15 +613,27 @@
                 </div>
                 <div class="form-group">
                     <label>Модель</label>
-                    <input type="text" id="agent-model" class="form-input" placeholder="llama3">
+                    <input type="text" id="agent-model" class="form-input" placeholder="meta/llama-3.1-8b-instruct">
+                    <small style="color: var(--text-secondary); font-size: 11px; margin-top: 4px; display: block;">
+                        Для NVIDIA: meta/llama-3.1-8b-instruct, deepseek-ai/deepseek-coder-6.7b-instruct<br>
+                        Для Ollama: llama3, codellama, mistral
+                    </small>
                 </div>
                 <div class="form-group">
                     <label>Base URL</label>
-                    <input type="text" id="agent-url" class="form-input" placeholder="http://localhost:11434">
+                    <input type="text" id="agent-url" class="form-input" placeholder="https://integrate.api.nvidia.com/v1">
+                    <small style="color: var(--text-secondary); font-size: 11px; margin-top: 4px; display: block;">
+                        NVIDIA API: https://integrate.api.nvidia.com/v1<br>
+                        Ollama: http://localhost:11434
+                    </small>
                 </div>
                 <div class="form-group">
-                    <label>API Key (опционально)</label>
-                    <input type="password" id="agent-key" class="form-input" placeholder="••••••••">
+                    <label>API Key (обязательно для NVIDIA)</label>
+                    <input type="password" id="agent-key" class="form-input" placeholder="nvapi-...">
+                    <small style="color: var(--text-secondary); font-size: 11px; margin-top: 4px; display: block;">
+                        Получите ключ на <a href="https://build.nvidia.com" target="_blank" style="color: var(--primary);">build.nvidia.com</a><br>
+                        Для Ollama оставьте пустым
+                    </small>
                 </div>
                 <button onclick="addAgent()" id="add-agent-btn" class="btn-primary">Создать агента</button>
                 <div id="model-check-result" style="margin-top: 12px; padding: 12px; border-radius: 10px; display: none; font-size: 13px;"></div>
@@ -663,140 +675,6 @@
     function clearChat() {
         const messagesDiv = document.getElementById('chat-messages');
         messagesDiv.innerHTML = '';
-    }
-
-    async function addAgent() {
-        const data = {
-            name: document.getElementById('agent-name').value,
-            role: document.getElementById('agent-role').value,
-            model: document.getElementById('agent-model').value,
-            base_url: document.getElementById('agent-url').value,
-            api_key: document.getElementById('agent-key').value,
-        };
-
-        if(!data.name || !data.role || !data.model || !data.base_url) { 
-            alert('Заполните все поля: имя, роль, модель и URL сервера'); 
-            return; 
-        }
-        
-        const btn = document.getElementById('add-agent-btn');
-        const resultDiv = document.getElementById('model-check-result');
-        
-        // Показываем индикатор проверки
-        btn.disabled = true;
-        btn.textContent = '🔍 Проверка модели...';
-        resultDiv.style.display = 'block';
-        resultDiv.style.background = '#eff6ff';
-        resultDiv.style.color = '#1e40af';
-        resultDiv.innerHTML = '🔄 Тестирование модели: проверка способности выполнять инструкции и возвращать валидный JSON...';
-
-        const res = await fetch('/api/agents', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-
-        if(res.ok) {
-            const responseData = await res.json();
-            resultDiv.style.background = '#d1fae5';
-            resultDiv.style.color = '#065f46';
-            resultDiv.innerHTML = `✅ <strong>Агент добавлен!</strong><br>${responseData.model_check || 'Модель доступна'}`;
-            document.getElementById('agent-name').value = '';
-            loadAgents();
-            addMessage(`✅ Агент "${data.name}" успешно добавлен с моделью ${data.model}`, 'system');
-        } else {
-            const err = await res.json();
-            resultDiv.style.background = '#fee2e2';
-            resultDiv.style.color = '#991b1b';
-            resultDiv.innerHTML = `❌ <strong>Ошибка:</strong> ${err.details || err.error}<br><small>${err.suggestion || ''}</small>`;
-            addMessage(`❌ Ошибка добавления агента: ${err.error || 'Неизвестная ошибка'}`, 'system');
-        }
-        
-        btn.disabled = false;
-        btn.textContent = 'Создать Агента';
-        
-        // Скрываем сообщение через 10 секунд
-        setTimeout(() => {
-            resultDiv.style.display = 'none';
-        }, 10000);
-    }
-
-    async function loadAgents() {
-        const res = await fetch('/api/agents');
-        const agents = await res.json();
-        const ul = document.getElementById('agents-ul');
-
-        ul.innerHTML = '';
-        if(agents.length === 0) {
-            ul.innerHTML = '<li style="color:#94a3b8; padding:10px;">Нет активных агентов. Добавьте первого!</li>';
-            return;
-        }
-
-        agents.forEach(name => {
-            ul.innerHTML += `<li class="agent-item"><span><strong>${name}</strong></span> <span class="status-badge status-done">Active</span></li>`;
-        });
-    }
-
-    async function runTask() {
-        const taskInput = document.getElementById('task-input');
-        const task = taskInput.value;
-        const output = document.getElementById('output');
-        const btn = document.getElementById('run-btn');
-        const fileInput = document.getElementById('file-input');
-
-        if(!task) { 
-            addMessage('⚠️ Введите задачу в поле ввода', 'system');
-            return; 
-        }
-
-        // Добавляем сообщение пользователя в чат
-        addMessage(task, 'user');
-        
-        // Очищаем поле ввода
-        taskInput.value = '';
-
-        output.textContent = "🔄 Система строит граф задач, проводит рефлексию...\n";
-        btn.disabled = true;
-        btn.textContent = "⏳ Выполнение...";
-
-        // Обработка изображения
-        let imageData = null;
-        if (currentBase64Image) {
-            imageData = currentBase64Image;
-        }
-
-        try {
-            const res = await fetch('/api/run', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ task, image_data: imageData })
-            });
-
-            const data = await res.json();
-            
-            if(data.results) {
-                output.textContent = data.results;
-                addMessage('✅ Задача выполнена!', 'system');
-                // Добавляем краткий результат в чат
-                const shortResult = data.results.substring(0, 300) + (data.results.length > 300 ? '...' : '');
-                addMessage(shortResult, 'agent');
-            } else {
-                output.textContent = "❌ Ошибка: " + (data.error || "Неизвестная ошибка");
-                addMessage(`❌ Ошибка выполнения: ${data.error || 'Неизвестная ошибка'}`, 'system');
-            }
-        } catch (e) {
-            output.textContent = "❌ Ошибка соединения: " + e.message;
-            addMessage(`❌ Ошибка соединения: ${e.message}`, 'system');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = "➤";
-        }
-        
-        // Очищаем загруженное изображение
-        currentBase64Image = null;
-        document.getElementById('file-preview').textContent = '';
-        
-        loadMemory();
     }
 
     // Мультимодальность: обработка файлов
