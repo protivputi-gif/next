@@ -6,19 +6,37 @@
     <title>Nexus - Автономная Мультиагентная Система</title>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --success: #10b981; --danger: #ef4444; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        h2 { margin-top: 0; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+        .main-layout { display: grid; grid-template-columns: 2fr 1fr; height: 100vh; gap: 0; }
+        .chat-section { background: var(--bg); display: flex; flex-direction: column; border-right: 1px solid #e2e8f0; }
+        .sidebar { background: var(--card); overflow-y: auto; padding: 20px; }
+        
+        /* Chat Styles */
+        .chat-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .chat-header { padding: 20px; background: var(--card); border-bottom: 1px solid #e2e8f0; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .message { max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; }
+        .message.user { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 4px; }
+        .message.agent { align-self: flex-start; background: #e2e8f0; color: var(--text); border-bottom-left-radius: 4px; }
+        .message.system { align-self: center; background: #fef3c7; color: #92400e; font-size: 0.9em; }
+        .chat-input-area { padding: 20px; background: var(--card); border-top: 1px solid #e2e8f0; }
+        .chat-input-wrapper { display: flex; gap: 10px; align-items: flex-end; }
+        .chat-input { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; resize: none; font-family: inherit; }
+        .send-btn { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .send-btn:hover { opacity: 0.9; }
+        .send-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        
+        /* Sidebar Styles */
+        .sidebar h2 { margin-top: 0; color: var(--primary); display: flex; align-items: center; gap: 10px; font-size: 1.2em; }
+        .sidebar h3 { font-size: 1em; color: #64748b; margin-top: 20px; }
         input, select, textarea, button { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
         button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
         button:hover { opacity: 0.9; transform: translateY(-1px); }
         button.secondary { background: #64748b; }
         .agent-list { list-style: none; padding: 0; }
         .agent-item { background: #eff6ff; padding: 10px; margin: 5px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--primary); }
-        .log-area { background: #1e293b; color: #10b981; padding: 15px; border-radius: 8px; height: 400px; overflow-y: auto; font-family: 'Consolas', monospace; white-space: pre-wrap; font-size: 0.9em; }
-        .full-width { grid-column: 1 / -1; }
-        #memory-display { font-size: 0.9em; color: #64748b; max-height: 200px; overflow-y: auto; background: #f1f5f9; padding: 10px; border-radius: 6px; }
+        .log-area { background: #1e293b; color: #10b981; padding: 15px; border-radius: 8px; height: 200px; overflow-y: auto; font-family: 'Consolas', monospace; white-space: pre-wrap; font-size: 0.85em; }
+        #memory-display { font-size: 0.85em; color: #64748b; max-height: 150px; overflow-y: auto; background: #f1f5f9; padding: 10px; border-radius: 6px; }
         .lesson-badge { background: var(--success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
         .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
         .status-done { background: #d1fae5; color: #065f46; }
@@ -26,81 +44,132 @@
         .loading { animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         #model-check-result { border: 2px solid transparent; transition: all 0.3s ease; }
+        .file-drop-zone { border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center; }
+        .section-card { background: var(--card); padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <!-- Добавление агента -->
-    <div class="card">
-        <h2>🤖 Добавить Агента</h2>
-        <input type="text" id="agent-name" placeholder="Имя (напр. Coder, AndroidBuilder)">
-        <input type="text" id="agent-role" placeholder="Роль (напр. Пишет код на Python/Java)">
-        <input type="text" id="agent-model" placeholder="Модель (напр. llama3, gpt-4, meta/llama3-70b-instruct)">
-        <input type="text" id="agent-url" placeholder="Base URL (http://localhost:11434 или https://integrate.api.nvidia.com/v1)">
-        <input type="password" id="agent-key" placeholder="API Key (пусто для локальных)">
-        <button onclick="addAgent()" id="add-agent-btn">Создать Агента</button>
+<div class="main-layout">
+    <!-- Левая часть: Чат с агентом -->
+    <div class="chat-section">
+        <div class="chat-header">
+            <h2 style="margin: 0;">💬 Чат с Агентом</h2>
+            <p style="margin: 5px 0 0 0; color: #64748b; font-size: 0.9em;">Отправьте задачу и система выполнит её автономно</p>
+        </div>
         
-        <div id="model-check-result" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
-
-        <h3>Активные агенты:</h3>
-        <ul id="agents-ul" class="agent-list"></ul>
+        <div class="chat-messages" id="chat-messages">
+            <div class="message system">
+                👋 Добро пожаловать в Nexus! Добавьте агентов справа и отправьте задачу в чат.
+            </div>
+        </div>
+        
+        <!-- Индикатор статуса агента -->
+        <div id="status-display" style="padding: 10px 20px; background: #f1f5f9; border-top: 1px solid #e2e8f0; font-size: 0.85em; color: #64748b; display: none;"></div>
+        
+        <div class="chat-input-area">
+            <div class="file-drop-zone" id="file-drop-zone"
+                 ondrop="handleDrop(event)" ondragover="event.preventDefault()">
+                <p style="margin: 0 0 10px 0; color: #64748b; font-size: 0.85em;">📎 Перетащите изображение сюда или нажмите для выбора</p>
+                <input type="file" id="file-input" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+                <button type="button" class="secondary" onclick="document.getElementById('file-input').click()" style="width: auto; padding: 8px 16px; font-size: 0.85em;">Выбрать файл</button>
+                <div id="file-preview" style="margin-top: 10px; font-size: 0.85em; color: var(--primary);"></div>
+            </div>
+            
+            <div class="chat-input-wrapper">
+                <textarea id="task-input" class="chat-input" rows="2" placeholder="Опишите задачу (напр. 'Создай Android приложение с кнопкой, собери его и проверь логи')..."></textarea>
+                <button onclick="runTask()" id="run-btn" class="send-btn">➤</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Запуск задачи -->
-    <div class="card">
-        <h2>⚡ Запуск Задачи</h2>
-        <p style="font-size: 0.9em; color: #64748b;">Система сама построит граф выполнения, проведет рефлексию и выполнит задачи.</p>
-        <textarea id="task-input" rows="4" placeholder="Опишите сложную задачу (напр. 'Создай Android приложение с кнопкой, собери его и проверь логи')..."></textarea>
+    <!-- Правая часть: Панель управления -->
+    <div class="sidebar">
+        <!-- Добавление агента -->
+        <div class="section-card">
+            <h2>🤖 Добавить Агента</h2>
+            <input type="text" id="agent-name" placeholder="Имя (напр. Coder, AndroidBuilder)">
+            <input type="text" id="agent-role" placeholder="Роль (напр. Пишет код на Python/Java)">
+            <input type="text" id="agent-model" placeholder="Модель (напр. llama3, gpt-4)">
+            <input type="text" id="agent-url" placeholder="Base URL (http://localhost:11434)">
+            <input type="password" id="agent-key" placeholder="API Key (пусто для локальных)">
+            
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="skip-model-check" disabled>
+                    <span style="font-size: 0.85em; color: #64748b; text-decoration: line-through;">Пропустить проверку модели</span>
+                </label>
+                <p style="font-size: 0.8em; color: #10b981; margin-top: 5px;">
+                    ✅ Проверка модели обязательна
+                </p>
+            </div>
+            
+            <button onclick="addAgent()" id="add-agent-btn">Создать Агента</button>
+            
+            <div id="model-check-result" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none; font-size: 0.85em;"></div>
 
-        <!-- Загрузка файлов для мультимодальности -->
-        <div style="border: 2px dashed #cbd5e1; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center;"
-             ondrop="handleDrop(event)" ondragover="event.preventDefault()">
-            <p style="margin: 0 0 10px 0; color: #64748b;">📎 Перетащите изображение сюда или нажмите для выбора</p>
-            <input type="file" id="file-input" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
-            <button type="button" class="secondary" onclick="document.getElementById('file-input').click()" style="width: auto;">Выбрать файл</button>
-            <div id="file-preview" style="margin-top: 10px; font-size: 0.9em; color: var(--primary);"></div>
+            <h3>Активные агенты:</h3>
+            <ul id="agents-ul" class="agent-list"></ul>
         </div>
 
-        <button onclick="runTask()" id="run-btn">Выполнить автономно</button>
-    </div>
+        <!-- Результаты выполнения -->
+        <div class="section-card">
+            <h2>📝 Результаты</h2>
+            <div id="output" class="log-area">Ожидание задач...</div>
+        </div>
 
-    <!-- Логи и Результаты -->
-    <div class="card full-width">
-        <h2>📝 Результаты выполнения графа</h2>
-        <div id="output" class="log-area">Ожидание задач...</div>
-    </div>
-
-    <!-- Память и Уроки -->
-    <div class="card full-width">
-        <h2>🧠 Память и Опыт системы</h2>
-        <div id="memory-display">Память пуста. Система начнет обучаться после первых задач.</div>
-        <button class="secondary" onclick="loadMemory()" style="width: auto; margin-top: 10px;">Обновить память</button>
+        <!-- Память и Уроки -->
+        <div class="section-card">
+            <h2>🧠 Память системы</h2>
+            <div id="memory-display">Память пуста.</div>
+            <button class="secondary" onclick="loadMemory()" style="width: auto; margin-top: 10px; font-size: 0.85em; padding: 8px 16px;">Обновить</button>
+        </div>
     </div>
 </div>
 
 <script>
+    // Добавление сообщения в чат
+    function addMessage(content, type) {
+        const messagesDiv = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        messageDiv.textContent = content;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Очистка чата
+    function clearChat() {
+        const messagesDiv = document.getElementById('chat-messages');
+        messagesDiv.innerHTML = '';
+    }
+
     async function addAgent() {
+        const skipCheck = false; // Проверка модели теперь обязательна
         const data = {
             name: document.getElementById('agent-name').value,
             role: document.getElementById('agent-role').value,
             model: document.getElementById('agent-model').value,
             base_url: document.getElementById('agent-url').value,
-            api_key: document.getElementById('agent-key').value
+            api_key: document.getElementById('agent-key').value,
+            skip_check: skipCheck
         };
 
-        if(!data.name || !data.model) { alert('Заполните имя и модель'); return; }
+        if(!data.name || !data.role || !data.model || !data.base_url) { 
+            alert('Заполните все поля: имя, роль, модель и URL сервера'); 
+            return; 
+        }
         
         const btn = document.getElementById('add-agent-btn');
         const resultDiv = document.getElementById('model-check-result');
         
         // Показываем индикатор проверки
         btn.disabled = true;
-        btn.textContent = 'Проверка модели...';
+        btn.textContent = '🔍 Проверка модели...';
         resultDiv.style.display = 'block';
         resultDiv.style.background = '#eff6ff';
         resultDiv.style.color = '#1e40af';
-        resultDiv.innerHTML = '🔍 Проверка доступности модели...';
+        resultDiv.innerHTML = '🔄 Подключение к серверу моделей и проверка доступности...';
 
         const res = await fetch('/api/agents', {
             method: 'POST',
@@ -115,11 +184,13 @@
             resultDiv.innerHTML = `✅ <strong>Агент добавлен!</strong><br>${responseData.model_check || 'Модель доступна'}`;
             document.getElementById('agent-name').value = '';
             loadAgents();
+            addMessage(`✅ Агент "${data.name}" успешно добавлен с моделью ${data.model}`, 'system');
         } else {
             const err = await res.json();
             resultDiv.style.background = '#fee2e2';
             resultDiv.style.color = '#991b1b';
             resultDiv.innerHTML = `❌ <strong>Ошибка:</strong> ${err.details || err.error}<br><small>${err.suggestion || ''}</small>`;
+            addMessage(`❌ Ошибка добавления агента: ${err.error || 'Неизвестная ошибка'}`, 'system');
         }
         
         btn.disabled = false;
@@ -148,17 +219,26 @@
     }
 
     async function runTask() {
-        const task = document.getElementById('task-input').value;
+        const taskInput = document.getElementById('task-input');
+        const task = taskInput.value;
         const output = document.getElementById('output');
         const btn = document.getElementById('run-btn');
         const fileInput = document.getElementById('file-input');
 
-        if(!task) { alert('Введите задачу'); return; }
+        if(!task) { 
+            addMessage('⚠️ Введите задачу в поле ввода', 'system');
+            return; 
+        }
+
+        // Добавляем сообщение пользователя в чат
+        addMessage(task, 'user');
+        
+        // Очищаем поле ввода
+        taskInput.value = '';
 
         output.textContent = "🔄 Система строит граф задач, проводит рефлексию...\n";
-        output.classList.add('loading');
         btn.disabled = true;
-        btn.textContent = "Выполнение...";
+        btn.textContent = "⏳ Выполнение...";
 
         // Обработка изображения
         let imageData = null;
@@ -174,20 +254,29 @@
             });
 
             const data = await res.json();
-            output.classList.remove('loading');
-
+            
             if(data.results) {
                 output.textContent = data.results;
+                addMessage('✅ Задача выполнена!', 'system');
+                // Добавляем краткий результат в чат
+                const shortResult = data.results.substring(0, 300) + (data.results.length > 300 ? '...' : '');
+                addMessage(shortResult, 'agent');
             } else {
                 output.textContent = "❌ Ошибка: " + (data.error || "Неизвестная ошибка");
+                addMessage(`❌ Ошибка выполнения: ${data.error || 'Неизвестная ошибка'}`, 'system');
             }
         } catch (e) {
-            output.classList.remove('loading');
             output.textContent = "❌ Ошибка соединения: " + e.message;
+            addMessage(`❌ Ошибка соединения: ${e.message}`, 'system');
         } finally {
             btn.disabled = false;
-            btn.textContent = "Выполнить автономно";
+            btn.textContent = "➤";
         }
+        
+        // Очищаем загруженное изображение
+        currentBase64Image = null;
+        document.getElementById('file-preview').textContent = '';
+        
         loadMemory();
     }
 
@@ -210,6 +299,7 @@
         reader.onload = function(e) {
             currentBase64Image = e.target.result; // Data URL
             document.getElementById('file-preview').textContent = `✅ Файл загружен: ${file.name} (${Math.round(file.size/1024)} KB)`;
+            addMessage(`📎 Изображение прикреплено: ${file.name}`, 'system');
         };
         reader.readAsDataURL(file);
     }
@@ -220,15 +310,38 @@
         const div = document.getElementById('memory-display');
 
         if(data.short_term && data.short_term.length > 0) {
-            let html = '<h3>Последние события:</h3>';
+            let html = '<h3 style="margin: 0 0 10px 0; font-size: 0.9em;">Последние события:</h3>';
             data.short_term.forEach(m => {
-                html += `<p><strong>${m.role}:</strong> ${m.content.substring(0, 150)}${m.content.length>150?'...':''}</p>`;
+                html += `<p style="margin: 5px 0; font-size: 0.85em;"><strong>${m.role}:</strong> ${m.content.substring(0, 100)}${m.content.length>100?'...':''}</p>`;
             });
             div.innerHTML = html;
         } else {
             div.innerHTML = "Память пуста";
         }
     }
+
+    // Отправка по Enter (без Shift)
+    document.addEventListener('DOMContentLoaded', function() {
+        const taskInput = document.getElementById('task-input');
+        taskInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                runTask();
+            }
+        });
+        
+        // Добавляем функцию updateStatus для отображения статуса агента
+        window.updateStatus = function(statusText) {
+            const statusDiv = document.getElementById('status-display');
+            if (statusDiv) {
+                statusDiv.textContent = statusText;
+                statusDiv.style.display = statusText ? 'block' : 'none';
+            }
+        };
+    });
+    
+    // Инициализация переменных чата
+    const chatMessages = document.getElementById('chat-messages');
 
     // Init
     loadAgents();

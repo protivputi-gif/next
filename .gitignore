@@ -1,45 +1,50 @@
 ```
-# Python
-__pycache__/
+# Compiled and binary files
 *.pyc
-*.pyo
-*.pyd
-
-# Environment
-.venv/
-venv/
-env/
+__pycache__/
 
 # Dependencies
+.venv/
+venv/
 node_modules/
-
-# Logs
-*.log
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
 
 # Build artifacts
 dist/
 build/
 target/
-*.out
-*.exe
-*.dll
-*.so
-*.a
 
-# System
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System files
 .DS_Store
 Thumbs.db
 
-# Coverage
-.coverage
+# Coverage reports
 coverage/
 htmlcov/
+.coverage
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.so
 
 # Testing
 .pytest_cache/

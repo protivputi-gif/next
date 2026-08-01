@@ -2,9 +2,7 @@ import os
 import sys
 import json
 import time
-import sqlite3
 import hashlib
-import threading
 import asyncio
 import subprocess
 import re
@@ -13,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from collections import defaultdict, deque
-from concurrent.futures import ThreadPoolExecutor
 
 # --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 logging.basicConfig(
@@ -34,15 +31,22 @@ except ImportError:
     import aiohttp
 
 try:
-    from flask import Flask, request, jsonify, render_template_string
+    import aiosqlite
 except ImportError:
-    logger.info("Установка Flask...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "flask"])
-    from flask import Flask, request, jsonify, render_template_string
+    logger.info("Установка aiosqlite...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "aiosqlite"])
+    import aiosqlite
+
+try:
+    from quart import Quart, request, jsonify, render_template_string
+except ImportError:
+    logger.info("Установка Quart...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "quart"])
+    from quart import Quart, request, jsonify, render_template_string
 
 # --- КОНФИГУРАЦИЯ ---
 DB_PATH = "nexus_memory.db"
-app = Flask(__name__)
+app = Quart(__name__)
 
 # --- ЛЕГКОВЕСНАЯ ГРАФОВАЯ ПАМЯТЬ ---
 class GraphNode:
@@ -66,42 +70,47 @@ class GraphMemory:
     def __init__(self):
         self.nodes: Dict[str, GraphNode] = {}
         self._init_db()
-        self._load_graph()
-        logger.info("[GRAPH] Графовая память инициализирована.")
+        # _load_graph будет вызван асинхронно в init_db сервера
+        logger.info("[GRAPH] Графовая память инициализирована (ожидание async загрузки).")
 
     def _init_db(self):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS graph_nodes
-                     (id TEXT PRIMARY KEY, label TEXT, type TEXT, properties TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS graph_edges
-                     (source_id TEXT, relation TEXT, target_id TEXT,
-                      PRIMARY KEY (source_id, relation, target_id))''')
-        conn.commit()
-        conn.close()
+        # Инициализация БД будет выполнена асинхронно в _init_async
+        pass
+
+    async def _init_async(self):
+        """Асинхронная инициализация базы данных и загрузка графа"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute('''CREATE TABLE IF NOT EXISTS graph_nodes
+                         (id TEXT PRIMARY KEY, label TEXT, type TEXT, properties TEXT)''')
+            await db.execute('''CREATE TABLE IF NOT EXISTS graph_edges
+                         (source_id TEXT, relation TEXT, target_id TEXT,
+                          PRIMARY KEY (source_id, relation, target_id))''')
+            await db.commit()
+        await self._load_graph()
+        logger.info("[GRAPH] База данных инициализирована и граф загружен (async).")
 
     def _get_node_id(self, label: str) -> str:
         return hashlib.md5(label.lower().strip().encode()).hexdigest()[:12]
 
-    def add_node(self, label: str, node_type: str = "concept") -> GraphNode:
+    async def add_node(self, label: str, node_type: str = "concept") -> GraphNode:
         node_id = self._get_node_id(label)
         if node_id not in self.nodes:
             node = GraphNode(node_id, label, node_type)
             self.nodes[node_id] = node
-            self._save_node(node)
+            await self._save_node_async(node)
             logger.debug(f"[GRAPH] Добавлен узел: {label} ({node_type})")
         else:
             self.nodes[node_id].properties["access_count"] += 1
         return self.nodes[node_id]
 
-    def add_edge(self, source_label: str, target_label: str, relation: str = "related_to"):
-        src = self.add_node(source_label)
-        tgt = self.add_node(target_label)
+    async def add_edge(self, source_label: str, target_label: str, relation: str = "related_to"):
+        src = await self.add_node(source_label)
+        tgt = await self.add_node(target_label)
         src.add_edge(relation, tgt.id)
         # Обратная связь для неиерархических отношений
         if relation not in ["causes", "requires", "uses"]:
             tgt.add_edge(f"reverse_{relation}", src.id)
-        self._save_edge(src.id, relation, tgt.id)
+        await self._save_edge_async(src.id, relation, tgt.id)
         logger.debug(f"[GRAPH] Связь: {source_label} --[{relation}]--> {target_label}")
 
     def get_neighbors(self, label: str, depth: int = 1) -> List[Dict]:
@@ -137,34 +146,36 @@ class GraphMemory:
         return results
 
     def _save_node(self, node: GraphNode):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO graph_nodes (id, label, type, properties) VALUES (?, ?, ?, ?)",
+        # Будет реализовано в асинхронной версии
+        pass
+
+    async def _save_node_async(self, node: GraphNode):
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("INSERT OR REPLACE INTO graph_nodes (id, label, type, properties) VALUES (?, ?, ?, ?)",
                   (node.id, node.label, node.type, json.dumps(node.properties)))
-        conn.commit()
-        conn.close()
+            await db.commit()
 
     def _save_edge(self, src: str, rel: str, tgt: str):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO graph_edges (source_id, relation, target_id) VALUES (?, ?, ?)",
-                  (src, rel, tgt))
-        conn.commit()
-        conn.close()
+        # Будет реализовано в асинхронной версии
+        pass
 
-    def _load_graph(self):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT id, label, type, properties FROM graph_nodes")
-        for row in c.fetchall():
-            node = GraphNode(row[0], row[1], row[2])
-            node.properties = json.loads(row[3])
-            self.nodes[row[0]] = node
-        c.execute("SELECT source_id, relation, target_id FROM graph_edges")
-        for row in c.fetchall():
-            if row[0] in self.nodes:
-                self.nodes[row[0]].add_edge(row[1], row[2])
-        conn.close()
+    async def _save_edge_async(self, src: str, rel: str, tgt: str):
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("INSERT OR IGNORE INTO graph_edges (source_id, relation, target_id) VALUES (?, ?, ?)",
+                  (src, rel, tgt))
+            await db.commit()
+
+    async def _load_graph(self):
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT id, label, type, properties FROM graph_nodes") as cursor:
+                async for row in cursor:
+                    node = GraphNode(row[0], row[1], row[2])
+                    node.properties = json.loads(row[3])
+                    self.nodes[row[0]] = node
+            async with db.execute("SELECT source_id, relation, target_id FROM graph_edges") as cursor:
+                async for row in cursor:
+                    if row[0] in self.nodes:
+                        self.nodes[row[0]].add_edge(row[1], row[2])
         logger.info(f"[GRAPH] Загружено {len(self.nodes)} узлов из базы.")
 
 # --- СИСТЕМА ПАМЯТИ С ОБУЧЕНИЕМ ---
@@ -178,52 +189,46 @@ class AdvancedMemory:
         if len(self.short_term) > 10:
             self.short_term.pop(0)
 
-    def save_episode(self, role, content, success=True):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        ts = time.time()
-        c.execute("INSERT INTO episodes (timestamp, role, content, success) VALUES (?, ?, ?, ?)",
+    async def save_episode(self, role, content, success=True):
+        async with aiosqlite.connect(DB_PATH) as db:
+            ts = time.time()
+            await db.execute("INSERT INTO episodes (timestamp, role, content, success) VALUES (?, ?, ?, ?)",
                   (ts, role, content, success))
-        conn.commit()
-        conn.close()
+            await db.commit()
         self.add_short_term(role, content)
         
         # Обновление графа
-        self.graph.add_node(role, "agent_role")
+        await self.graph.add_node(role, "agent_role")
         if "ошибка" in content.lower() or "error" in content.lower() or "fail" in content.lower():
-            self.graph.add_node("Error", "system_state")
-            self.graph.add_edge(role, "Error", "encountered")
+            await self.graph.add_node("Error", "system_state")
+            await self.graph.add_edge(role, "Error", "encountered")
         logger.info(f"[MEMORY] Эпизод сохранен: {role} | Успех: {success}")
 
-    def save_lesson(self, keyword, lesson_text):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT count FROM lessons WHERE keyword=?", (keyword,))
-        row = c.fetchone()
-        if row:
-            c.execute("UPDATE lessons SET count=count+1 WHERE keyword=?", (keyword,))
-            logger.info(f"[MEMORY] Обновлен урок: {keyword}")
-        else:
-            c.execute("INSERT INTO lessons (keyword, lesson_text) VALUES (?, ?)", (keyword, lesson_text))
-            logger.info(f"[MEMORY] Создан урок: {keyword}")
-        conn.commit()
-        conn.close()
+    async def save_lesson(self, keyword, lesson_text):
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT count FROM lessons WHERE keyword=?", (keyword,)) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                await db.execute("UPDATE lessons SET count=count+1 WHERE keyword=?", (keyword,))
+                logger.info(f"[MEMORY] Обновлен урок: {keyword}")
+            else:
+                await db.execute("INSERT INTO lessons (keyword, lesson_text) VALUES (?, ?)", (keyword, lesson_text))
+                logger.info(f"[MEMORY] Создан урок: {keyword}")
+            await db.commit()
         
         # Сохранение в граф
-        self.graph.add_edge(keyword, lesson_text[:50], "has_lesson")
+        await self.graph.add_edge(keyword, lesson_text[:50], "has_lesson")
 
-    def get_lessons(self, keywords):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
+    async def get_lessons(self, keywords):
         lessons = []
-        for kw in keywords:
-            c.execute("SELECT lesson_text FROM lessons WHERE keyword LIKE ?", (f"%{kw}%",))
-            rows = c.fetchall()
-            lessons.extend([r[0] for r in rows])
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as db:
+            for kw in keywords:
+                async with db.execute("SELECT lesson_text FROM lessons WHERE keyword LIKE ?", (f"%{kw}%",)) as cursor:
+                    rows = await cursor.fetchall()
+                    lessons.extend([r[0] for r in rows])
         return lessons
 
-    def get_context(self, task_keywords=None):
+    async def get_context(self, task_keywords=None):
         context = "=== Краткосрочная память ===\n"
         for msg in self.short_term:
             context += f"{msg['role']}: {msg['content']}\n"
@@ -242,17 +247,15 @@ class AdvancedMemory:
             if found:
                 context += graph_ctx
 
-        lessons = self.get_lessons(task_keywords) if task_keywords else []
+        lessons = await self.get_lessons(task_keywords) if task_keywords else []
         if lessons:
             context += "\n=== ИЗВЛЕЧЕННЫЕ УРОКИ ===\n"
             for l in lessons:
                 context += f"- {l}\n"
 
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT role, content, success FROM episodes ORDER BY timestamp DESC LIMIT 5")
-        rows = c.fetchall()
-        conn.close()
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT role, content, success FROM episodes ORDER BY timestamp DESC LIMIT 5") as cursor:
+                rows = await cursor.fetchall()
 
         if rows:
             context += "\n=== ПОСЛЕДНЯЯ ИСТОРИЯ ===\n"
@@ -426,7 +429,7 @@ class GraphOrchestrator:
 
         planner = agent_list[0] # Временное решение: первый агент как планировщик
 
-        ctx = memory.get_context(main_task.split())
+        ctx = await memory.get_context(main_task.split())
         # Передаем изображение планировщику если есть
         
         logger.info("[ORCHESTRATOR] Запуск планировщика...")
@@ -491,7 +494,7 @@ class GraphOrchestrator:
                 node.result = res
                 node.status = "done" if "Ошибка" not in res else "failed"
                 completed.add(node.id)
-                memory.save_episode(f"Node-{node.id}", f"{node.description}: {res[:100]}", node.status=="done")
+                await memory.save_episode(f"Node-{node.id}", f"{node.description}: {res[:100]}", node.status=="done")
                 logger.info(f"[ORCHESTRATOR] Узел {node.id} завершен со статусом: {node.status}")
 
         # Сбор результатов
@@ -509,19 +512,156 @@ class GraphOrchestrator:
             learn_prompt = f"Задача '{main_task}' выполнена успешно. Извлеки 1-2 ключевых урока для будущего (коротко)."
             # Можно отправить любому агенту для генерации урока
             lesson_text = await planner.think_and_act(learn_prompt, ctx, [])
-            memory.save_lesson(main_task.split()[0], lesson_text) # Сохраняем по первому слову задачи
+            await memory.save_lesson(main_task.split()[0], lesson_text) # Сохраняем по первому слову задачи
             logger.info("[ORCHESTRATOR] Урок сохранен в память")
         else:
             failed_ids = [n.id for n in self.nodes if n.status=='failed']
-            memory.save_lesson("failure_analysis", f"Задача '{main_task}' провалилась на шагах: {failed_ids}")
+            await memory.save_lesson("failure_analysis", f"Задача '{main_task}' провалилась на шагах: {failed_ids}")
             logger.warning(f"[ORCHESTRATOR] Сохранен анализ неудачи: шаги {failed_ids}")
 
         return final_report
 
+    async def execute_graph_stream(self, main_task: str, planner_agent, image_data=None):
+        """
+        Асинхронный генератор для стриминга результатов выполнения графа.
+        1. Планирование -> статус 'planning'
+        2. Выполнение узлов -> статусы 'tool_use', 'memory_search', 'code_execution', etc.
+        3. Формирование ответа -> статус 'response'
+        """
+        # Шаг 1: Планирование
+        yield {'type': 'status', 'status': 'planning'}
+        
+        plan_prompt = f"""
+        Ты главный архитектор Nexus. Твоя задача: разбить задачу '{main_task}' на пошаговый план (граф).
+        Доступные агенты: {list(self.agents.keys())}.
+        Инструменты системы: {list(TOOLS.keys())}.
+
+        Верни ТОЛЬКО JSON список шагов. Каждый шаг:
+        {{
+            "id": 0,
+            "description": "Что сделать",
+            "agent": "Имя агента или 'system_tool'",
+            "depends_on": [список id предыдущих шагов]
+        }}
+        Если нужны системные команды (установка SDK, компиляция), используй агента 'System' или инструмент напрямую.
+        """
+
+        agent_list = list(self.agents.values())
+        if not agent_list:
+            yield {'type': 'error', 'text': 'Нет активных агентов для планирования.'}
+            return
+
+        planner = agent_list[0]
+        ctx = await memory.get_context(main_task.split())
+        
+        logger.info("[ORCHESTRATOR/STREAM] Запуск планировщика...")
+        plan_result = await planner.think_and_act(plan_prompt, ctx, [], image_data)
+
+        # Парсинг плана
+        try:
+            clean_json = re.search(r'\[.*\]', plan_result, re.DOTALL)
+            if clean_json:
+                plan_data = json.loads(clean_json.group())
+            else:
+                plan_data = json.loads(plan_result)
+
+            logger.info(f"[ORCHESTRATOR/STREAM] План получен: {len(plan_data)} шагов")
+            
+            for step in plan_data:
+                nid = self.create_node(step['description'], step.get('agent'))
+                if 'depends_on' in step:
+                    for dep in step['depends_on']:
+                        self.add_dependency(dep, nid)
+                        
+            logger.info("[ORCHESTRATOR/STREAM] Граф задач построен")
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR/STREAM] Ошибка парсинга плана: {e}, используем fallback")
+            self.create_node(main_task, agent_list[0].name)
+
+        # Шаг 2: Выполнение графа со стримингом
+        completed = set()
+        iteration = 0
+        
+        while len(completed) < len(self.nodes):
+            iteration += 1
+            if iteration > 50:
+                logger.error("[ORCHESTRATOR/STREAM] Превышено максимальное количество итераций")
+                break
+                
+            ready_nodes = []
+            for node in self.nodes.values():
+                if node.status == "pending":
+                    if all(dep in completed for dep in node.dependencies):
+                        ready_nodes.append(node)
+
+            if not ready_nodes:
+                logger.warning("[ORCHESTRATOR/STREAM] Нет готовых узлов, выход из цикла")
+                break
+
+            logger.info(f"[ORCHESTRATOR/STREAM] Запуск {len(ready_nodes)} узлов параллельно")
+            
+            # Стримим статус выполнения узлов
+            for node in ready_nodes:
+                node.status = "running"
+                yield {'type': 'status', 'status': 'tool_use', 'node_id': node.id, 'description': node.description}
+            
+            # Параллельный запуск с перехватом результатов
+            tasks = []
+            for node in ready_nodes:
+                tasks.append(self._execute_node_stream(node, main_task))
+            
+            # Собираем результаты по мере готовности
+            for coro in asyncio.as_completed(tasks):
+                result = await coro
+                node = result['node']
+                res = result['result']
+                
+                node.result = res
+                node.status = "done" if "Ошибка" not in res else "failed"
+                completed.add(node.id)
+                
+                # Отправляем результат узла
+                yield {'type': 'message', 'text': f"✅ Узел {node.id}: {node.description}\n{res[:200]}"}
+                
+                await memory.save_episode(f"Node-{node.id}", f"{node.description}: {res[:100]}", node.status=="done")
+                logger.info(f"[ORCHESTRATOR/STREAM] Узел {node.id} завершен со статусом: {node.status}")
+
+        # Сбор финального отчета
+        yield {'type': 'status', 'status': 'response'}
+        
+        final_report = "=== Отчет по графу задач ===\n"
+        success_count = sum(1 for n in self.nodes.values() if n.status == "done")
+        fail_count = len(self.nodes) - success_count
+        
+        for node in self.nodes.values():
+            final_report += f"[{node.status.upper()}] Шаг {node.id}: {node.description}\nРезультат: {node.result}\n\n"
+
+        logger.info(f"[ORCHESTRATOR/STREAM] Задача завершена: успешно={success_count}, провалено={fail_count}")
+        
+        # Отправляем финальный отчет
+        yield {'type': 'message', 'text': final_report}
+
+        # Самообучение
+        if all(n.status == "done" for n in self.nodes.values()):
+            learn_prompt = f"Задача '{main_task}' выполнена успешно. Извлеки 1-2 ключевых урока для будущего (коротко)."
+            lesson_text = await planner.think_and_act(learn_prompt, ctx, [])
+            await memory.save_lesson(main_task.split()[0], lesson_text)
+            logger.info("[ORCHESTRATOR/STREAM] Урок сохранен в память")
+            yield {'type': 'message', 'text': f"💡 Урок: {lesson_text[:200]}"}
+        else:
+            failed_ids = [n.id for n in self.nodes if n.status=='failed']
+            await memory.save_lesson("failure_analysis", f"Задача '{main_task}' провалилась на шагах: {failed_ids}")
+            logger.warning(f"[ORCHESTRATOR/STREAM] Сохранен анализ неудачи: шаги {failed_ids}")
+
+    async def _execute_node_stream(self, node: TaskNode, global_task: str):
+        """Обертка над _execute_node для возврата результата с информацией о узле"""
+        result = await self._execute_node(node, global_task)
+        return {'node': node, 'result': result}
+
     async def _execute_node(self, node: TaskNode, global_task: str):
         if node.assigned_agent and node.assigned_agent in self.agents:
             agent = self.agents[node.assigned_agent]
-            ctx = memory.get_context(global_task.split())
+            ctx = await memory.get_context(global_task.split())
             # Передаем результаты зависимостей в контекст
             deps_context = ""
             for dep_id in node.dependencies:
@@ -928,19 +1068,19 @@ class Agent:
     async def think_and_act(self, task, context, history, image_data=None):
         return await self.execute_with_reflection(task, context, history, image_data)
 
-# --- FLASK ROUTES ---
+# --- QUART ROUTES (ASYNC) ---
 
 agents_registry = {}
 orchestrator = GraphOrchestrator(agents_registry)
 
 @app.route('/')
-def index():
+async def index():
     with open('index.html', 'r', encoding='utf-8') as f:
         return f.read()
 
 @app.route('/api/agents', methods=['POST'])
 async def add_agent():
-    data = request.json
+    data = await request.json
     name = data.get('name')
     role = data.get('role')
     model = data.get('model')
@@ -948,9 +1088,9 @@ async def add_agent():
     api_key = data.get('api_key', '')
 
     if not all([name, role, model, base_url]):
-        return jsonify({"error": "Missing fields"}), 400
+        return jsonify({"error": "Заполните все поля: имя, роль, модель и URL сервера"}), 400
 
-    # Проверка доступности модели перед добавлением агента
+    # Обязательная проверка доступности модели
     logger.info(f"[AGENT_ADD] Проверка доступности модели '{model}' на сервере '{base_url}'...")
     availability = await Agent.check_model_availability(model, base_url, api_key)
     
@@ -959,10 +1099,10 @@ async def add_agent():
         return jsonify({
             "error": "Model not available",
             "details": availability.get('message'),
-            "suggestion": "Проверьте название модели, URL сервера и API ключ"
+            "suggestion": "Проверьте: 1) Название модели 2) URL сервера 3) API ключ 4) Сетевое подключение"
         }), 400
     
-    logger.info(f"[AGENT_ADD] Модель доступна: {availability.get('message')}")
+    logger.info(f"[AGENT_ADD] ✅ Модель доступна: {availability.get('message')}")
 
     agent = Agent(name, role, model, base_url, api_key)
     agents_registry[name] = agent
@@ -970,17 +1110,17 @@ async def add_agent():
     orchestrator.agents = agents_registry
     return jsonify({
         "status": "success", 
-        "message": f"Agent {name} added",
+        "message": f"Агент '{name}' успешно добавлен",
         "model_check": availability.get('message')
     })
 
 @app.route('/api/agents', methods=['GET'])
-def list_agents():
+async def list_agents():
     return jsonify(list(agents_registry.keys()))
 
 @app.route('/api/run', methods=['POST'])
-def run():
-    data = request.json
+async def run():
+    data = await request.json
     task = data.get('task')
     image_data = data.get('image_data')  # Получаем изображение
 
@@ -990,33 +1130,86 @@ def run():
     if not agents_registry:
         return jsonify({"error": "No agents available. Add an agent first."}), 400
 
-    def run_async_loop():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        # Передаем изображение в оркестратор
-        res = loop.run_until_complete(orchestrator.execute_graph(task, None, image_data))
-        loop.close()
-        return res
-
-    # Используем ThreadPoolExecutor для неблокирующего запуска
-    future = app.config.get('executor', ThreadPoolExecutor(max_workers=5)).submit(run_async_loop)
+    # Прямой асинхронный запуск без ThreadPoolExecutor
     try:
-        results = future.result(timeout=300) # 5 минут на сложные задачи
+        results = await orchestrator.execute_graph(task, None, image_data)
         return jsonify({"results": results})
     except Exception as e:
+        logger.error(f"[API/RUN] Ошибка выполнения: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/memory', methods=['GET'])
-def get_memory():
+async def get_memory():
     return jsonify({"short_term": memory.short_term})
 
+@app.route('/api/chat/stream', methods=['POST'])
+async def chat_stream():
+    """Стриминг ответов агента через Server-Sent Events"""
+    from quart import Response
+    
+    data = await request.json
+    task = data.get('task')
+    image_data = data.get('image_data')
+    
+    if not task:
+        return jsonify({"error": "Task missing"}), 400
+    
+    if not agents_registry:
+        return jsonify({"error": "No agents available"}), 400
+    
+    async def generate():
+        try:
+            # Отправляем статус начала
+            yield f"data: {json.dumps({'type': 'status', 'content': '🔄 Инициализация...'})}\n\n"
+            
+            # Получаем оркестратор и выполняем граф
+            status_messages = {
+                'planning': '🧠 Планирование...',
+                'tool_use': '🛠️ Использование инструментов...',
+                'memory_search': '🔍 Поиск в памяти...',
+                'code_execution': '💻 Выполнение кода...',
+                'analysis': '📊 Анализ...',
+                'response': '✍️ Формирование ответа...'
+            }
+            
+            # Запускаем выполнение графа с перехватом статусов
+            async for event in orchestrator.execute_graph_stream(task, None, image_data):
+                if isinstance(event, dict):
+                    if event.get('type') == 'status':
+                        status_key = event.get('status', 'processing')
+                        msg = status_messages.get(status_key, '⏳ Обработка...')
+                        yield f"data: {json.dumps({'type': 'status', 'content': msg})}\n\n"
+                    elif event.get('type') == 'message':
+                        yield f"data: {json.dumps({'type': 'message', 'content': event.get('text', '')})}\n\n"
+                else:
+                    # Обычный текст - считаем частью сообщения
+                    yield f"data: {json.dumps({'type': 'message', 'content': str(event)})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"[STREAM] Ошибка: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+    
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.before_serving
+async def init_db():
+    """Инициализация БД перед запуском сервера"""
+    await memory.graph._init_async()
+    # Создаем таблицы для episodes и lessons если их нет
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''CREATE TABLE IF NOT EXISTS episodes
+                     (timestamp REAL, role TEXT, content TEXT, success BOOLEAN)''')
+        await db.execute('''CREATE TABLE IF NOT EXISTS lessons
+                     (keyword TEXT PRIMARY KEY, lesson_text TEXT, count INTEGER DEFAULT 1)''')
+        await db.commit()
+    logger.info("[INIT] База данных полностью инициализирована.")
+
 if __name__ == '__main__':
-    logger.info("Starting Nexus Multi-Agent System with Graph Orchestrator...")
+    logger.info("Starting Nexus Multi-Agent System with Graph Orchestrator (ASYNC)...")
     logger.info("Features: Auto-learning, Dynamic Graph Planning, Self-Healing, Tool Use.")
     logger.info("Logging enabled: all actions will be saved to nexus_agent.log")
     logger.info("Access web interface at http://127.0.0.1:5000")
 
-    # Сохраняем executor в конфиге app
-    app.config['executor'] = ThreadPoolExecutor(max_workers=5)
-
-    app.run(debug=True, port=5000, threaded=True)
+    app.run(debug=True, port=5000)
