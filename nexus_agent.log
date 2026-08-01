@@ -1,0 +1,7 @@
+2026-08-01 07:49:08,296 - NexusCore - INFO - Установка aiosqlite...
+2026-08-01 07:49:12,038 - NexusCore - INFO - Установка Quart...
+2026-08-01 07:49:16,319 - NexusCore - INFO - [GRAPH] Графовая память инициализирована (ожидание async загрузки).
+2026-08-01 07:49:16,323 - NexusCore - INFO - [AGENT] Настроен агент NVIDIA: TestNVIDIA1 -> https://integrate.api.nvidia.com/v1
+2026-08-01 07:49:16,323 - NexusCore - INFO - [AGENT] Настроен агент NVIDIA: TestNVIDIA2 -> https://integrate.api.nvidia.com/v1
+2026-08-01 07:49:16,323 - NexusCore - INFO - [AGENT] Настроен агент NVIDIA: TestNVIDIA3 -> https://integrate.api.nvidia.com/v1
+2026-08-01 07:49:22,077 - NexusCore - INFO - [GRAPH] Графовая память инициализирована (ожидание async загрузки).

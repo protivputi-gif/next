@@ -803,22 +803,48 @@ class Agent:
         self.name = name
         self.role = role
         self.model = model
-        self.base_url = base_url.rstrip('/')
-        self.api_key = api_key
+        
+        # Авто-коррекция для NVIDIA Build при создании агента
+        is_nvidia = "nvidia.com" in base_url or (api_key and api_key.startswith("nvapi-"))
+        if is_nvidia:
+            # Принудительно устанавливаем правильный endpoint для NVIDIA
+            self.base_url = "https://integrate.api.nvidia.com/v1".rstrip('/')
+            # Добавляем префикс nvapi- если его нет
+            if api_key and not api_key.startswith("nvapi-"):
+                self.api_key = f"nvapi-{api_key}"
+            else:
+                self.api_key = api_key
+            logger.info(f"[AGENT] Настроен агент NVIDIA: {name} -> {self.base_url}")
+        else:
+            self.base_url = base_url.rstrip('/')
+            self.api_key = api_key
+        
         self.world_model = global_world_model
 
     @staticmethod
     async def check_model_availability(model: str, base_url: str, api_key: str = "") -> Dict[str, Any]:
         """Проверяет доступность модели на указанном сервере."""
         headers = {"Content-Type": "application/json"}
+        
+        # Специальная обработка для NVIDIA Build (NGC)
+        is_nvidia = "nvidia.com" in base_url or api_key.startswith("nvapi-")
+        if is_nvidia and api_key and not api_key.startswith("nvapi-"):
+            api_key = f"nvapi-{api_key}"
+        
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         
+        # Для NVIDIA Build используем их специфичный endpoint
+        if is_nvidia:
+            base_url = "https://integrate.api.nvidia.com/v1"
+        
         # Сначала пробуем получить список доступных моделей
-        models_url = f"{base_url.rstrip('/')}/v1/models"
+        models_url = f"{base_url.rstrip('/')}/models"
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(models_url, headers=headers, timeout=10) as resp:
+                # Увеличенный таймаут для NVIDIA API
+                timeout = 30 if is_nvidia else 10
+                async with session.get(models_url, headers=headers, timeout=timeout) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         available_models = [m.get('id', '') for m in data.get('data', [])]
@@ -832,7 +858,7 @@ class Agent:
             logger.warning(f"[MODEL_CHECK] Ошибка при получении списка моделей: {e}")
         
         # Тестовый запрос к API completions для проверки доступности модели
-        test_url = f"{base_url.rstrip('/')}/v1/chat/completions"
+        test_url = f"{base_url.rstrip('/')}/chat/completions"
         test_payload = {
             "model": model,
             "messages": [{"role": "user", "content": "test"}],
@@ -842,13 +868,17 @@ class Agent:
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(test_url, json=test_payload, headers=headers, timeout=10) as resp:
+                # Увеличенный таймаут для NVIDIA API
+                timeout = 45 if is_nvidia else 15
+                async with session.post(test_url, json=test_payload, headers=headers, timeout=timeout) as resp:
                     if resp.status == 200:
                         return {"available": True, "message": f"Модель '{model}' доступна и отвечает"}
                     elif resp.status == 404:
                         return {"available": False, "message": f"Модель '{model}' не найдена на сервере"}
                     elif resp.status == 401:
-                        return {"available": False, "message": "Неверный API ключ или отсутствует авторизация"}
+                        return {"available": False, "message": "Неверный API ключ или отсутствует авторизация. Для NVIDIA используйте ключ с префиксом 'nvapi-'"}
+                    elif resp.status == 403:
+                        return {"available": False, "message": f"Доступ запрещён. Проверьте права доступа к модели '{model}'"}
                     elif resp.status == 503:
                         return {"available": False, "message": f"Модель '{model}' временно недоступна (сервер перегружен)"}
                     else:
@@ -947,10 +977,14 @@ class Agent:
             "stream": False
         }
 
-        url = f"{self.base_url}/v1/chat/completions"
+        url = f"{self.base_url}/chat/completions"
+
+        # Увеличенный таймаут для NVIDIA API
+        is_nvidia = "nvidia.com" in self.base_url or (self.api_key and self.api_key.startswith("nvapi-"))
+        timeout = 120 if is_nvidia else 60
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers, timeout=120) as resp:
+            async with session.post(url, json=payload, headers=headers, timeout=timeout) as resp:
                 if resp.status != 200:
                     text = await resp.text()
                     raise Exception(f"API Error {resp.status}: {text}")
