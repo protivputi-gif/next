@@ -1,41 +1,12 @@
 ```
-# Compiled Python files
-*.pyc
-__pycache__/
+# Database files
+*.db
 
-# Logs
+# Log files
 *.log
-nexus_agent.log
 
-# Environment
+# Environment files
 .env
 .env.local
 *.env.*
-
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Build artifacts
-dist/
-build/
-target/
-
-# Editors
-.vscode/
-.idea/
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# Cache
-.mypy_cache/
-.pytest_cache/
 ```
