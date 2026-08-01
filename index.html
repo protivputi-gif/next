@@ -39,6 +39,14 @@
         <input type="text" id="agent-model" placeholder="Модель (напр. llama3, gpt-4, meta/llama3-70b-instruct)">
         <input type="text" id="agent-url" placeholder="Base URL (http://localhost:11434 или https://integrate.api.nvidia.com/v1)">
         <input type="password" id="agent-key" placeholder="API Key (пусто для локальных)">
+        
+        <div style="margin: 10px 0;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="skip-model-check">
+                <span style="font-size: 0.9em; color: #64748b;">Пропустить проверку модели (добавить без проверки)</span>
+            </label>
+        </div>
+        
         <button onclick="addAgent()" id="add-agent-btn">Создать Агента</button>
         
         <div id="model-check-result" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
@@ -81,12 +89,14 @@
 
 <script>
     async function addAgent() {
+        const skipCheck = document.getElementById('skip-model-check').checked;
         const data = {
             name: document.getElementById('agent-name').value,
             role: document.getElementById('agent-role').value,
             model: document.getElementById('agent-model').value,
             base_url: document.getElementById('agent-url').value,
-            api_key: document.getElementById('agent-key').value
+            api_key: document.getElementById('agent-key').value,
+            skip_check: skipCheck
         };
 
         if(!data.name || !data.model) { alert('Заполните имя и модель'); return; }
@@ -96,11 +106,19 @@
         
         // Показываем индикатор проверки
         btn.disabled = true;
-        btn.textContent = 'Проверка модели...';
-        resultDiv.style.display = 'block';
-        resultDiv.style.background = '#eff6ff';
-        resultDiv.style.color = '#1e40af';
-        resultDiv.innerHTML = '🔍 Проверка доступности модели...';
+        if (skipCheck) {
+            btn.textContent = 'Добавление...';
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = '#eff6ff';
+            resultDiv.style.color = '#1e40af';
+            resultDiv.innerHTML = '➕ Добавление агента без проверки модели...';
+        } else {
+            btn.textContent = 'Проверка модели...';
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = '#eff6ff';
+            resultDiv.style.color = '#1e40af';
+            resultDiv.innerHTML = '🔍 Проверка доступности модели...';
+        }
 
         const res = await fetch('/api/agents', {
             method: 'POST',
