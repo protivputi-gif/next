@@ -1,19 +1,16 @@
 ```
-# Python
-__pycache__/
+# Compiled Python files
 *.pyc
-*.pyo
-*.pyd
+__pycache__/
 
-# Database
-nexus_memory.db
+# Database files
+*.db
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
 
-# Environment
+# Environment files
 .env
 .env.local
 *.env.*
@@ -21,18 +18,4 @@ nexus_memory.db
 # Editors
 .vscode/
 .idea/
-
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Build artifacts
-dist/
-build/
-target/
-
-# OS generated files
-.DS_Store
-Thumbs.db
 ```

@@ -217,11 +217,24 @@
                 </div>
                 <div class="form-group">
                     <label>Model *</label>
-                    <input type="text" id="agent-model" class="form-input" placeholder="meta/llama-3.1-8b-instruct">
-                    <div class="form-hint">NVIDIA: meta/llama-3.1-8b-instruct, meta/llama-3.3-70b-instruct, nvidia/nemotron-3-super-120b-a12b | Ollama: llama3.1:8b</div>
+                    <select id="agent-model" class="form-input" onchange="handleModelSelect()">
+                        <option value="">-- Выберите модель --</option>
+                        <option value="meta/llama-3.1-8b-instruct">Llama 3.1 8B Instruct (быстрая)</option>
+                        <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (умная)</option>
+                        <option value="nvidia/nemotron-3-nano-30b-a3b">Nemotron 3 Nano 30B (сбалансированная)</option>
+                        <option value="custom">-- Своя модель --</option>
+                    </select>
+                    <input type="text" id="agent-model-custom" class="form-input" placeholder="Введите название модели" style="display:none;margin-top:8px;">
+                    <div class="form-hint">🚀 NVIDIA API: выберите модель выше и вставьте API ключ<br>🏠 Ollama: выберите "Своя модель" и введите llama3.1:8b, URL: http://localhost:11434</div>
                 </div>
                 <div class="form-group">
                     <label>Base URL *</label>
+                    <select id="agent-url-select" class="form-input" onchange="handleUrlSelect()" style="margin-bottom:8px;">
+                        <option value="">-- Выберите провайдера --</option>
+                        <option value="https://integrate.api.nvidia.com/v1">NVIDIA API</option>
+                        <option value="http://localhost:11434">Ollama (локально)</option>
+                        <option value="custom-url">-- Свой URL --</option>
+                    </select>
                     <input type="text" id="agent-url" class="form-input" placeholder="https://integrate.api.nvidia.com/v1">
                     <div class="form-hint">NVIDIA: https://integrate.api.nvidia.com/v1 | Ollama: http://localhost:11434</div>
                 </div>
@@ -263,6 +276,39 @@ function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         runTask();
+    }
+}
+
+// Handle model selection - show custom input if "custom" is selected
+function handleModelSelect() {
+    const modelSelect = document.getElementById('agent-model');
+    const customInput = document.getElementById('agent-model-custom');
+    
+    if (modelSelect.value === 'custom') {
+        customInput.style.display = 'block';
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
+    }
+}
+
+// Handle URL selection - show custom input if "custom-url" is selected
+function handleUrlSelect() {
+    const urlSelect = document.getElementById('agent-url-select');
+    const urlInput = document.getElementById('agent-url');
+    
+    if (urlSelect.value === 'custom-url') {
+        urlInput.style.display = 'block';
+        urlInput.value = '';
+        urlInput.placeholder = 'Введите ваш URL';
+        urlInput.focus();
+    } else if (urlSelect.value) {
+        urlInput.style.display = 'block';
+        urlInput.value = urlSelect.value;
+    } else {
+        urlInput.style.display = 'block';
+        urlInput.value = '';
     }
 }
 
@@ -443,15 +489,26 @@ function isValidUrl(url) {
 async function addAgent() {
     const nameInput = document.getElementById('agent-name');
     const roleInput = document.getElementById('agent-role');
-    const modelInput = document.getElementById('agent-model');
+    const modelSelect = document.getElementById('agent-model');
+    const modelCustomInput = document.getElementById('agent-model-custom');
+    const urlSelect = document.getElementById('agent-url-select');
     const urlInput = document.getElementById('agent-url');
     const keyInput = document.getElementById('agent-key');
+    
+    // Get actual model value (from select or custom input)
+    let modelValue = modelSelect.value;
+    if (modelValue === 'custom') {
+        modelValue = modelCustomInput.value.trim();
+    }
+    
+    // Get actual URL value (from select or input)
+    let urlValue = urlInput.value.trim();
     
     const data = {
         name: nameInput.value.trim(),
         role: roleInput.value.trim(),
-        model: modelInput.value.trim(),
-        base_url: urlInput.value.trim(),
+        model: modelValue,
+        base_url: urlValue,
         api_key: keyInput.value.trim()
     };
     
@@ -459,7 +516,7 @@ async function addAgent() {
     const btn = document.getElementById('add-agent-btn');
     
     // Reset errors
-    [nameInput, roleInput, modelInput, urlInput, keyInput].forEach(input => {
+    [nameInput, roleInput, modelSelect, modelCustomInput, urlSelect, urlInput, keyInput].forEach(input => {
         input.classList.remove('error');
     });
     resultDiv.style.display = 'none';
@@ -481,7 +538,11 @@ async function addAgent() {
     }
     
     if (!data.model) {
-        modelInput.classList.add('error');
+        if (modelSelect.value === 'custom') {
+            modelCustomInput.classList.add('error');
+        } else {
+            modelSelect.classList.add('error');
+        }
         errors.push('• Модель обязательна');
     }
     
@@ -528,7 +589,9 @@ async function addAgent() {
             // Clear form
             nameInput.value = '';
             roleInput.value = '';
-            modelInput.value = '';
+            modelSelect.value = '';
+            modelCustomInput.value = '';
+            urlSelect.value = '';
             urlInput.value = '';
             keyInput.value = '';
             
