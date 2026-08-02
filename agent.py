@@ -269,8 +269,24 @@ memory = AdvancedMemory()
 # --- ИНСТРУМЕНТЫ (TOOLS) С БЕЗОПАСНОСТЬЮ И УСТАНОВКОЙ ---
 
 class SystemTools:
+    # Argument name mapping for tool compatibility
+    ARG_MAPPING = {
+        "filename": "path",
+        "file": "path",
+        "filepath": "path",
+        "script": "code",
+        "python_code": "code",
+        "text": "content",  # Map 'text' to 'content' for write_file
+        "command": "cmd",
+        "shell_cmd": "cmd",
+        "pkg_manager": "manager",
+        "pkg_name": "package",
+        "package_name": "package",
+    }
+
     @staticmethod
     async def run_python_code(code: str):
+        """Execute Python code safely. Parameter: code (str)"""
         logger.info(f"[TOOL] Выполнение Python кода (длина: {len(code)} симв.)")
         try:
             local_scope = {"__builtins__": __builtins__}
@@ -284,6 +300,7 @@ class SystemTools:
 
     @staticmethod
     async def run_shell_command(cmd: str):
+        """Execute shell command. Parameter: cmd (str)"""
         logger.info(f"[TOOL] Выполнение команды: {cmd}")
         dangerous = ["rm -rf /", "mkfs", "dd if="]
         if any(d in cmd for d in dangerous):
@@ -295,11 +312,9 @@ class SystemTools:
                 cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"}
             )
-            # В Python 3.12 communicate() не принимает timeout, используем wait_for + asyncio.wait_for
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
             except asyncio.TimeoutError:
-                # Принудительно завершаем процесс при таймауте
                 try:
                     proc.kill()
                 except:
@@ -315,24 +330,25 @@ class SystemTools:
             return f"Ошибка Shell: {str(e)}"
 
     @staticmethod
-    async def check_and_install(package_manager: str, package: str):
-        """Проверяет и устанавливает пакеты (apt, pip, sdkmanager)"""
-        logger.info(f"[TOOL] Установка пакета {package} через {package_manager}")
+    async def check_and_install(manager: str, package: str):
+        """Check and install packages (apt/pip/sdk). Parameters: manager (str), package (str)"""
+        logger.info(f"[TOOL] Установка пакета {package} через {manager}")
         cmd = ""
-        if package_manager == "apt":
+        if manager == "apt":
             cmd = f"apt-get update && apt-get install -y {package}"
-        elif package_manager == "pip":
+        elif manager == "pip":
             cmd = f"pip install {package}"
-        elif package_manager == "sdk":
+        elif manager == "sdk":
             cmd = f"sdkmanager \"{package}\""
         else:
-            logger.error(f"[TOOL] Неизвестный менеджер пакетов: {package_manager}")
-            return f"Неизвестный менеджер пакетов: {package_manager}"
+            logger.error(f"[TOOL] Неизвестный менеджер пакетов: {manager}")
+            return f"Неизвестный менеджер пакетов: {manager}"
 
         return await SystemTools.run_shell_command(cmd)
 
     @staticmethod
     async def read_file(path: str):
+        """Read file content. Parameter: path (str)"""
         logger.info(f"[TOOL] Чтение файла: {path}")
         if not os.path.exists(path): 
             logger.warning(f"[TOOL] Файл не найден: {path}")
@@ -348,6 +364,7 @@ class SystemTools:
 
     @staticmethod
     async def write_file(path: str, content: str):
+        """Write content to file. Parameters: path (str), content (str)"""
         logger.info(f"[TOOL] Запись файла: {path} ({len(content)} байт)")
         try:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -361,6 +378,7 @@ class SystemTools:
 
     @staticmethod
     async def fetch_url(url: str):
+        """Fetch URL content. Parameter: url (str)"""
         logger.info(f"[TOOL] Запрос URL: {url}")
         try:
             async with aiohttp.ClientSession() as session:
@@ -372,13 +390,27 @@ class SystemTools:
             logger.error(f"[TOOL] Ошибка сети: {e}")
             return f"Ошибка сети: {e}"
 
+    @staticmethod
+    def normalize_args(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize argument names using ARG_MAPPING"""
+        if not isinstance(args, dict):
+            return {}
+        
+        normalized = {}
+        for key, value in args.items():
+            # Map alternative names to standard names
+            normalized_key = SystemTools.ARG_MAPPING.get(key, key)
+            normalized[normalized_key] = value
+        return normalized
+
+
 TOOLS = {
-    "run_python": {"desc": "Выполнить Python код", "func": SystemTools.run_python_code},
-    "run_shell": {"desc": "Выполнить команду оболочки (Linux/Mac)", "func": SystemTools.run_shell_command},
-    "install_pkg": {"desc": "Установить пакет (apt/pip/sdk)", "func": SystemTools.check_and_install},
-    "read_file": {"desc": "Прочитать файл", "func": SystemTools.read_file},
-    "write_file": {"desc": "Записать файл", "func": SystemTools.write_file},
-    "fetch_url": {"desc": "Получить содержимое URL", "func": SystemTools.fetch_url},
+    "run_python": {"desc": "Выполнить Python код. Параметр: code (str)", "func": SystemTools.run_python_code},
+    "run_shell": {"desc": "Выполнить команду оболочки. Параметр: cmd (str)", "func": SystemTools.run_shell_command},
+    "install_pkg": {"desc": "Установить пакет. Параметры: manager (apt/pip/sdk), package (str)", "func": SystemTools.check_and_install},
+    "read_file": {"desc": "Прочитать файл. Параметр: path (str)", "func": SystemTools.read_file},
+    "write_file": {"desc": "Записать файл. Параметры: path (str), content (str)", "func": SystemTools.write_file},
+    "fetch_url": {"desc": "Получить содержимое URL. Параметр: url (str)", "func": SystemTools.fetch_url},
 }
 
 # --- ГРАФОВЫЙ ОРКЕСТРАТОР ---
@@ -490,19 +522,27 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
 
             logger.info(f"[ORCHESTRATOR] Запуск {len(ready_nodes)} узлов параллельно")
             
-            # Параллельный запуск готовых узлов
+            # Параллельный запуск готовых узлов с изоляцией ошибок
             tasks = []
             for node in ready_nodes:
                 node.status = "running"
-                tasks.append(self._execute_node(node, main_task))
+                # Обернуть в asyncio.create_task с обработкой исключений
+                tasks.append(self._safe_execute_node(node, main_task))
 
-            results = await asyncio.gather(*tasks)
+            # Gather с return_exceptions=True для изоляции сбоев
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for node, res in zip(ready_nodes, results):
-                node.result = res
-                node.status = "done" if "Ошибка" not in res else "failed"
+                # Handle exception results
+                if isinstance(res, Exception):
+                    logger.error(f"[ORCHESTRATOR] Узел {node.id} выбросил исключение: {res}")
+                    node.result = f"Ошибка выполнения: {str(res)}"
+                    node.status = "failed"
+                else:
+                    node.result = res
+                    node.status = "done" if "Ошибка" not in str(res) else "failed"
                 completed.add(node.id)
-                await memory.save_episode(f"Node-{node.id}", f"{node.description}: {res[:100]}", node.status=="done")
+                await memory.save_episode(f"Node-{node.id}", f"{node.description}: {str(node.result)[:100]}", node.status=="done")
                 logger.info(f"[ORCHESTRATOR] Узел {node.id} завершен со статусом: {node.status}")
 
         # Сбор результатов
@@ -614,42 +654,36 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
                 yield {'type': 'status', 'status': 'tool_use', 'node_id': node.id, 'description': node.description}
             
             # Параллельный запуск с перехватом результатов и стримингом событий
-            tasks = []
+            # Создаем задачи для каждого узла
+            node_tasks = {}
             for node in ready_nodes:
-                tasks.append(self._execute_node_stream(node, main_task))
+                task = asyncio.create_task(self._collect_node_stream(node, main_task))
+                node_tasks[task] = node
             
-            # Собираем результаты по мере готовности + обрабатываем стриминг
-            for coro in asyncio.as_completed(tasks):
-                try:
-                    async for stream_result in coro:
-                        if isinstance(stream_result, dict) and stream_result.get('type') == 'node_event':
-                            # Стримим события (мысли, действия) в интерфейс
-                            event = stream_result['event']
-                            node_id = stream_result['node_id']
-                            
-                            if event.get('type') == 'thought':
-                                yield {'type': 'thought', 'content': event.get('content', ''), 'node_id': node_id}
-                            elif event.get('type') == 'action':
-                                yield {'type': 'action', 'content': event.get('content', ''), 'node_id': node_id}
-                            elif event.get('type') == 'error':
-                                yield {'type': 'error', 'content': event.get('content', ''), 'node_id': node_id}
-                except StopAsyncIteration:
-                    pass
+            # Обрабатываем завершение задач по мере готовности
+            pending_tasks = set(node_tasks.keys())
+            while pending_tasks:
+                done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
                 
-                # Получаем финальный результат узла
-                result = await coro
-                node = result['node']
-                res = result['result']
-                
-                node.result = res
-                node.status = "done" if "Ошибка" not in res else "failed"
-                completed.add(node.id)
-                
-                # Отправляем результат узла
-                yield {'type': 'message', 'text': f"✅ Узел {node.id}: {node.description}\n{res[:200]}"}
-                
-                await memory.save_episode(f"Node-{node.id}", f"{node.description}: {res[:100]}", node.status=="done")
-                logger.info(f"[ORCHESTRATOR/STREAM] Узел {node.id} завершен со статусом: {node.status}")
+                for task in done:
+                    node = node_tasks[task]
+                    try:
+                        result = await task
+                        node.result = result['result']
+                        node.status = "done" if "Ошибка" not in result['result'] else "failed"
+                        completed.add(node.id)
+                        
+                        # Отправляем результат узла
+                        yield {'type': 'message', 'text': f"✅ Узел {node.id}: {node.description}\n{result['result'][:200]}"}
+                        
+                        await memory.save_episode(f"Node-{node.id}", f"{node.description}: {result['result'][:100]}", node.status=="done")
+                        logger.info(f"[ORCHESTRATOR/STREAM] Узел {node.id} завершен со статусом: {node.status}")
+                    except Exception as e:
+                        logger.error(f"[ORCHESTRATOR/STREAM] Ошибка выполнения узла {node.id}: {e}")
+                        node.result = f"Ошибка: {str(e)}"
+                        node.status = "failed"
+                        completed.add(node.id)
+                        yield {'type': 'error', 'content': f"Узел {node.id}: {str(e)}"}
 
         # Сбор финального отчета
         yield {'type': 'status', 'status': 'response'}
@@ -677,6 +711,28 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
             failed_ids = [n.id for n in self.nodes if n.status=='failed']
             await memory.save_lesson("failure_analysis", f"Задача '{main_task}' провалилась на шагах: {failed_ids}")
             logger.warning(f"[ORCHESTRATOR/STREAM] Сохранен анализ неудачи: шаги {failed_ids}")
+
+    async def _collect_node_stream(self, node: TaskNode, global_task: str):
+        """Collect all stream events from node execution and return final result"""
+        result_parts = []
+        try:
+            async for event in self._execute_node_stream(node, global_task):
+                if isinstance(event, dict):
+                    if event.get('type') == 'node_event':
+                        # Стримим события (мысли, действия) в интерфейс через yield
+                        # Но для этого нужно передать их наружу - сохраняем в атрибут узла
+                        stream_event = event['event']
+                        if not hasattr(node, 'stream_events'):
+                            node.stream_events = []
+                        node.stream_events.append(stream_event)
+                    elif event.get('type') == 'message':
+                        result_parts.append(event.get('text', ''))
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] Ошибка сбора стрима узла {node.id}: {e}")
+            result_parts.append(f"Ошибка: {str(e)}")
+        
+        result = ''.join(result_parts) if result_parts else "Нет результата"
+        return {'node': node, 'result': result}
 
     async def _execute_node_stream(self, node: TaskNode, global_task: str):
         """Обертка над _execute_node для возврата результата с информацией о узле + стриминг"""
@@ -712,6 +768,7 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
             yield {'node': node, 'result': result}
 
     async def _execute_node(self, node: TaskNode, global_task: str):
+        """Execute a single node with coroutine validation"""
         if node.assigned_agent and node.assigned_agent in self.agents:
             agent = self.agents[node.assigned_agent]
             ctx = await memory.get_context(global_task.split())
@@ -722,10 +779,30 @@ If system commands are needed (SDK install, compilation), use agent 'System' or 
                 deps_context += f"Результат шага {dep_id} ({dep_node.description}): {dep_node.result}\n"
 
             full_prompt = f"{deps_context}\nВыполни шаг: {node.description}"
-            return await agent.think_and_act(full_prompt, ctx, [])
+            result = await agent.think_and_act(full_prompt, ctx, [])
+            return result
         else:
             # Если агент не назначен или не найден, пытаемся выполнить как системную команду через Tool
-            return f"Шаг требует назначения агента или инструмента."
+            return "Шаг требует назначения агента или инструмента."
+
+    async def _safe_execute_node(self, node: TaskNode, global_task: str):
+        """Safe wrapper for node execution with exception handling and coroutine validation"""
+        import inspect
+        try:
+            # Execute the node and ensure it's awaited properly
+            coro = self._execute_node(node, global_task)
+            
+            # Validate that we have a coroutine
+            if not inspect.iscoroutine(coro):
+                logger.error(f"[ORCHESTRATOR] _execute_node did not return a coroutine for node {node.id}")
+                return f"Ошибка: внутренний сбой (не корутина)"
+            
+            result = await coro
+            return result
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] Safe execution failed for node {node.id}: {e}")
+            raise  # Re-raise to be caught by gather(return_exceptions=True)
+
 
 # --- МОДЕЛЬ МИРА (ВНУТРЕННЕЕ СОСТОЯНИЕ СРЕДЫ) ---
 class WorldModel:
@@ -835,38 +912,39 @@ Now output ONLY the JSON array:"""
 
     @staticmethod
     async def evaluate_thoughts(agent, task, thoughts):
-        """Evaluates each path and selects the best one"""
+        """Evaluates each path and selects the best one with robust fallback"""
         best_choice = None
         max_score = -1
+        valid_scores = []  # Fallback: store all valid scores
         
         for thought in thoughts:
+            strategy_name = str(thought.get('strategy_name', 'Unknown'))
             pros_str = ', '.join(str(p) for p in thought.get('pros', []))
             cons_str = ', '.join(str(c) for c in thought.get('cons', []))
             
-            eval_prompt = f"""Strategy: "{thought.get('strategy_name', 'Unknown')}"
-Task: '{task}'
+            eval_prompt = f"""Task: '{task}'
+Strategy: "{strategy_name}"
 Pros: {pros_str}
 Cons: {cons_str}
 
-Rate on a scale of 0-10: success probability, efficiency, safety.
+Rate this strategy on a scale of 0-10 for: success probability, efficiency, safety.
 
-Return ONLY a JSON object with this exact structure:
-{{"scores":{{"success":0,"efficiency":0,"safety":0}},"total_score":0,"reasoning":"brief explanation"}}
+Return ONLY a JSON object with this EXACT structure:
+{{"strategy_name": "{strategy_name}", "score": 5}}
 
-IMPORTANT:
-- Output MUST be valid JSON object starting with {{ and ending with }}
-- NO text before the opening brace
-- NO text after the closing brace  
-- NO markdown formatting (no ```json blocks)
-- NO explanations or comments
+CRITICAL REQUIREMENTS:
+- Output MUST be valid JSON starting with {{ and ending with }}
+- MUST include "strategy_name" field with value: "{strategy_name}"
+- MUST include "score" field with integer 0-10
+- NO text before or after JSON
+- NO markdown formatting
 
-Example output:
-{{"scores":{{"success":8,"efficiency":7,"safety":9}},"total_score":24,"reasoning":"Good balance"}}
+Example: {{"strategy_name": "{strategy_name}", "score": 7}}
 
-Now output ONLY the JSON object:"""
+Output ONLY the JSON object now:"""
             try:
                 messages = [
-                    {"role": "system", "content": "You are a JSON evaluator. Return ONLY valid JSON objects. Never include any text outside the JSON structure."},
+                    {"role": "system", "content": "You are a JSON evaluator. Return ONLY valid JSON objects with strategy_name and score fields."},
                     {"role": "user", "content": eval_prompt}
                 ]
                 response = await agent._call_llm(messages)
@@ -904,17 +982,48 @@ Now output ONLY the JSON object:"""
                     
                 json_str = clean_response[json_start:json_end]
                 eval_data = json.loads(json_str)
-                score = eval_data.get('total_score', 0)
                 
-                if score > max_score:
-                    max_score = score
-                    best_choice = {"thought": thought, "evaluation": eval_data}
+                # Extract score with validation
+                score = eval_data.get('score')
+                if score is None:
+                    # Fallback: calculate from total_score if present
+                    score = eval_data.get('total_score', 0)
+                    if isinstance(score, dict):
+                        # Handle nested scores format
+                        score = sum(score.values()) if score else 0
+                
+                try:
+                    score = int(score)
+                except (TypeError, ValueError):
+                    logging.warning(f"ToT evaluation: invalid score value: {score}")
+                    score = 5  # Default fallback
+                
+                # Clamp score to 0-10
+                score = max(0, min(10, score))
+                
+                # Store for fallback
+                valid_scores.append({'thought': thought, 'score': score, 'eval_data': eval_data})
+                
+                # Check if strategy_name matches (for primary selection logic)
+                returned_name = str(eval_data.get('strategy_name', ''))
+                if returned_name.lower() == strategy_name.lower():
+                    if score > max_score:
+                        max_score = score
+                        best_choice = {"thought": thought, "evaluation": eval_data}
+                        
             except Exception as e:
                 logging.warning(f"ToT branch evaluation error: {e}")
                 continue
         
+        # FALLBACK LOGIC: If no matching strategy_name found, select highest score
+        if not best_choice and valid_scores:
+            logging.info("ToT fallback: selecting by highest score (no name match)")
+            best = max(valid_scores, key=lambda x: x['score'])
+            best_choice = {"thought": best['thought'], "evaluation": best['eval_data']}
+        
+        # Final fallback: return first thought
         if not best_choice:
-            return {"thought": thoughts[0], "evaluation": {"reasoning": "Selected by default"}}
+            return {"thought": thoughts[0], "evaluation": {"reasoning": "Selected by default", "score": 5}}
             
         return best_choice
 
@@ -1328,18 +1437,10 @@ Output ONLY the JSON object now:"""
                             logger.warning(f"[{self.name}] Tool arguments must be a dictionary")
                             args = {}
 
-                        logger.info(f"[{self.name}] Calling tool: {tool_name}")
+                        # Normalize argument names using SystemTools.ARG_MAPPING
+                        args = SystemTools.normalize_args(tool_name, args)
                         
-                        # Argument name mapping for compatibility
-                        # run_shell expects 'cmd', but agent may send 'command'
-                        if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
-                            args['cmd'] = args.pop('command')
-                        # install_pkg expects 'manager' and 'package'
-                        if tool_name == 'install_pkg':
-                            if 'pkg_manager' in args and 'manager' not in args:
-                                args['manager'] = args.pop('pkg_manager')
-                            if 'pkg_name' in args and 'package' not in args:
-                                args['package'] = args.pop('pkg_name')
+                        logger.info(f"[{self.name}] Calling tool: {tool_name} with args: {list(args.keys())}")
                         
                         try:
                             res = await TOOLS[tool_name]['func'](**args)
@@ -1366,12 +1467,12 @@ Output ONLY the JSON object now:"""
                         if matched_tool:
                             logger.info(f"[{self.name}] Corrected action: {action_val} -> {matched_tool}")
                             response_json['action'] = matched_tool
-                            # Recursively handle corrected action
+                            # Recursively handle corrected action with normalized args
                             args = response_json.get('args', {})
                             if not isinstance(args, dict):
                                 args = {}
-                            if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
-                                args['cmd'] = args.pop('command')
+                            # Normalize arguments for the matched tool
+                            args = SystemTools.normalize_args(matched_tool, args)
                             res = await TOOLS[matched_tool]['func'](**args)
                             self.world_model.update_state(matched_tool, res)
                             current_history.append({"role": "assistant", "content": content})
@@ -1553,19 +1654,13 @@ Output ONLY the JSON object now:"""
                             logger.warning(f"[{self.name}] Tool arguments must be a dictionary")
                             args = {}
 
+                        # Normalize argument names using SystemTools.ARG_MAPPING
+                        args = SystemTools.normalize_args(tool_name, args)
+
                         # Stream action start
                         yield {'type': 'action', 'content': f"🛠️ Инструмент: {tool_name}\\nАргументы: {json.dumps(args, ensure_ascii=False)[:200]}"}
                         
-                        logger.info(f"[{self.name}] Calling tool: {tool_name}")
-                        
-                        # Argument name mapping
-                        if tool_name == 'run_shell' and 'command' in args and 'cmd' not in args:
-                            args['cmd'] = args.pop('command')
-                        if tool_name == 'install_pkg':
-                            if 'pkg_manager' in args and 'manager' not in args:
-                                args['manager'] = args.pop('pkg_manager')
-                            if 'pkg_name' in args and 'package' not in args:
-                                args['package'] = args.pop('pkg_name')
+                        logger.info(f"[{self.name}] Calling tool: {tool_name} with args: {list(args.keys())}")
                         
                         try:
                             res = await TOOLS[tool_name]['func'](**args)
@@ -1595,8 +1690,8 @@ Output ONLY the JSON object now:"""
                             args = response_json.get('args', {})
                             if not isinstance(args, dict):
                                 args = {}
-                            if matched_tool == 'run_shell' and 'command' in args and 'cmd' not in args:
-                                args['cmd'] = args.pop('command')
+                            # Normalize arguments for the matched tool
+                            args = SystemTools.normalize_args(matched_tool, args)
                             res = await TOOLS[matched_tool]['func'](**args)
                             self.world_model.update_state(matched_tool, res)
                             current_history.append({"role": "assistant", "content": content})
