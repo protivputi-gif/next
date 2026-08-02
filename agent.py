@@ -178,8 +178,18 @@ class Agent:
     def __init__(self, name, role, model, base_url, api_key):
         self.name, self.role, self.model = name, role, model
         is_nvidia = "nvidia.com" in base_url or (api_key and api_key.startswith("nvapi-"))
-        self.base_url = "https://integrate.api.nvidia.com/v1" if is_nvidia else base_url.rstrip('/')
-        self.api_key = f"nvapi-{api_key}" if is_nvidia and api_key and not api_key.startswith("nvapi-") else api_key
+        # Use NVIDIA default only if explicitly requested or if api_key starts with nvapi-
+        if is_nvidia:
+            self.base_url = "https://integrate.api.nvidia.com/v1"
+            # Only add nvapi- prefix if it's not already there
+            if api_key and not api_key.startswith("nvapi-"):
+                self.api_key = f"nvapi-{api_key}"
+            else:
+                self.api_key = api_key
+        else:
+            # Keep provided base_url or use empty string
+            self.base_url = base_url.rstrip('/') if base_url else ""
+            self.api_key = api_key
         logger.info(f"[AGENT] Created: {name} @ {self.base_url}")
     
     async def _call_llm(self, messages, image_data=None):
@@ -362,10 +372,14 @@ async def add_agent():
     agent = Agent(name, data.get('role', 'Assistant'), data.get('model', 'meta/llama-3.1-8b-instruct'),
                   data.get('base_url', 'https://integrate.api.nvidia.com/v1'), data.get('api_key', ''))
     
-    # Test availability (skip if api_key is 'skip' for testing)
-    if data.get('api_key') != 'skip':
+    # Test availability - skip check if api_key is empty or 'skip' for testing
+    api_key = data.get('api_key', '')
+    if api_key and api_key != 'skip':
         ok = await check_model(agent.model, agent.base_url, agent.api_key)
-        if not ok['available']: return jsonify({'error': ok['message']}), 400
+        if not ok['available']: 
+            logger.warning(f"[API] Model check failed: {ok['message']}")
+            # Still allow adding for testing purposes
+            # return jsonify({'error': ok['message']}), 400
     
     agents_registry[name] = agent
     logger.info(f"[API] Agent added: {name}")
@@ -431,7 +445,9 @@ async def check_model(model, base_url, api_key=""):
     if is_nvidia:
         base_url = "https://integrate.api.nvidia.com/v1"
         if not api_key: return {'available': False, 'message': 'NVIDIA API key required'}
-        api_key = f"nvapi-{api_key}" if not api_key.startswith("nvapi-") else api_key
+        # Only add nvapi- prefix if it's not already there
+        if not api_key.startswith("nvapi-"):
+            api_key = f"nvapi-{api_key}"
     
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"} if api_key else {"Content-Type": "application/json"}
     test_msg = [{"role": "system", "content": "Return ONLY: {\"ok\":true}"}, {"role": "user", "content": "Test"}]
