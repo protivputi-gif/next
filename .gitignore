@@ -1,21 +1,18 @@
 ```
-# Compiled Python files
-*.pyc
-__pycache__/
-
-# Database files
-*.db
-
-# Logs and temp files
+# Logs
 *.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database
+*.db
+nexus_memory.db
+
+# Temp files
 *.tmp
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
+*.temp
 ```

@@ -362,9 +362,10 @@ async def add_agent():
     agent = Agent(name, data.get('role', 'Assistant'), data.get('model', 'meta/llama-3.1-8b-instruct'),
                   data.get('base_url', 'https://integrate.api.nvidia.com/v1'), data.get('api_key', ''))
     
-    # Test availability
-    ok = await check_model(agent.model, agent.base_url, agent.api_key)
-    if not ok['available']: return jsonify({'error': ok['message']}), 400
+    # Test availability (skip if api_key is 'skip' for testing)
+    if data.get('api_key') != 'skip':
+        ok = await check_model(agent.model, agent.base_url, agent.api_key)
+        if not ok['available']: return jsonify({'error': ok['message']}), 400
     
     agents_registry[name] = agent
     logger.info(f"[API] Agent added: {name}")
@@ -405,8 +406,12 @@ async def chat_stream():
     async def gen():
         try:
             ctx = await get_context(task.split())
-            async for event in agent.execute(task, ctx, image_data=image, stream=True):
-                yield f"data: {json.dumps(event)}\n\n"
+            if hasattr(agent, 'execute_stream'):
+                async for event in agent.execute_stream(task, ctx, image_data=image):
+                    yield f"data: {json.dumps(event)}\n\n"
+            else:
+                result = await agent.execute(task, ctx, image_data=image)
+                yield f"data: {json.dumps({'response': result})}\n\n"
             yield "data: {\"done\": true}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
