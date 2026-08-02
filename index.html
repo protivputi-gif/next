@@ -613,6 +613,8 @@ async function addAgent() {
 }
 
 // Load agents list
+let currentAgent = null;
+
 async function loadAgents() {
     try {
         const response = await fetch('/api/agents');
@@ -633,6 +635,8 @@ async function loadAgents() {
         agents.forEach(agentName => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'agent-item';
+            itemDiv.style.cursor = 'pointer';
+            itemDiv.onclick = () => selectAgent(agentName, itemDiv);
             itemDiv.innerHTML = `
                 <div class="agent-info">
                     <div class="agent-icon">🤖</div>
@@ -644,11 +648,29 @@ async function loadAgents() {
                 <div class="status-indicator"></div>
             `;
             listDiv.appendChild(itemDiv);
+            
+            // Select first agent by default
+            if (currentAgent === null) {
+                selectAgent(agentName, itemDiv);
+            }
         });
     } catch (error) {
         console.error('Error loading agents:', error);
         document.getElementById('agents-list').innerHTML = '<div style="color:var(--error);padding:12px;text-align:center;">Ошибка загрузки</div>';
     }
+}
+
+function selectAgent(agentName, element) {
+    currentAgent = agentName;
+    // Remove selection from all items
+    document.querySelectorAll('.agent-item').forEach(el => {
+        el.style.borderColor = 'var(--border-color)';
+        el.style.background = 'var(--bg-secondary)';
+    });
+    // Highlight selected
+    element.style.borderColor = 'var(--accent-primary)';
+    element.style.background = 'var(--accent-light)';
+    console.log('Selected agent:', currentAgent);
 }
 
 // Escape HTML
@@ -669,6 +691,13 @@ async function runTask() {
         return;
     }
     
+    // Check if agent is selected
+    if (!currentAgent) {
+        addMessage('⚠️ Сначала выберите агента из списка (кликните по имени)', 'system');
+        toggleSidebar();
+        return;
+    }
+    
     // Add user message
     addMessage(task, 'user');
     taskInput.value = '';
@@ -684,7 +713,8 @@ async function runTask() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 task: task,
-                image_data: currentBase64Image
+                agent: currentAgent,
+                image: currentBase64Image
             })
         });
         
