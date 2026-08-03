@@ -557,11 +557,9 @@
         <!-- Left Panel: Workspace -->
         <div class="workspace">
             <div class="workspace-header">
-                <div class="workspace-title">Nexus Agent</div>
-                <div class="agent-selector">
-                    <select id="agentSelect" class="agent-select">
-                        <option value="">Загрузка агентов...</option>
-                    </select>
+                <div class="workspace-title">Nexus Hive 🐝</div>
+                <div style="font-size:13px;color:var(--text-muted);">
+                    <span id="hiveStatusText">Ожидание БОССА...</span>
                 </div>
             </div>
 
@@ -665,7 +663,7 @@
         const API_BASE = '';
 
         // State
-        let agents = [];
+        let hiveStatus = { boss: null, workers: [] };
         let currentEventSource = null;
         let isProcessing = false;
 
@@ -673,7 +671,6 @@
         const chatContainer = document.getElementById('chatContainer');
         const taskInput = document.getElementById('taskInput');
         const sendBtn = document.getElementById('sendBtn');
-        const agentSelect = document.getElementById('agentSelect');
         const agentsList = document.getElementById('agentsList');
         const memoryLessons = document.getElementById('memoryLessons');
         const agentCountEl = document.getElementById('agentCount');
@@ -721,67 +718,90 @@
             toggleCreateAgentBtn.textContent = isHidden ? '− Скрыть форму' : '+ Создать агента';
         }
 
-        // Load agents
+        // Load agents (Hive architecture)
         async function loadAgents() {
             try {
                 const response = await fetch(`${API_BASE}/api/agents`);
                 const data = await response.json();
                 
-                agents = data.agents || [];
-                updateAgentSelect();
+                hiveStatus = {
+                    boss: data.boss || null,
+                    workers: data.workers || []
+                };
+                
                 updateAgentsList();
-                agentCountEl.textContent = agents.length;
+                updateHiveStatusText();
+                
+                const totalAgents = (hiveStatus.boss ? 1 : 0) + hiveStatus.workers.length;
+                agentCountEl.textContent = totalAgents;
             } catch (error) {
-                console.error('Failed to load agents:', error);
-                addSystemMessage('Ошибка загрузки агентов');
+                console.error('Failed to load hive status:', error);
+                addSystemMessage('Ошибка загрузки статуса улья');
             }
         }
 
-        // Update agent select dropdown
-        function updateAgentSelect() {
-            agentSelect.innerHTML = '';
-            
-            if (agents.length === 0) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = 'Нет доступных агентов';
-                agentSelect.appendChild(option);
-                return;
-            }
-
-            agents.forEach(agent => {
-                const option = document.createElement('option');
-                option.value = agent;
-                option.textContent = agent;
-                agentSelect.appendChild(option);
-            });
-
-            // Select first agent by default
-            if (agents.length > 0 && !agentSelect.value) {
-                agentSelect.value = agents[0];
+        // Update hive status text in header
+        function updateHiveStatusText() {
+            const statusText = document.getElementById('hiveStatusText');
+            if (!hiveStatus.boss) {
+                statusText.textContent = '⚠️ Нет БОССА — создайте первого агента';
+                statusText.style.color = 'var(--warning-color)';
+            } else if (hiveStatus.workers.length === 0) {
+                statusText.textContent = `👑 ${hiveStatus.boss.name} (ждёт исполнителей)`;
+                statusText.style.color = 'var(--accent-color)';
+            } else {
+                statusText.textContent = `👑 ${hiveStatus.boss.name} + ${hiveStatus.workers.length} исп.`;
+                statusText.style.color = 'var(--success-color)';
             }
         }
 
-        // Update agents list in sidebar
+        // Update agents list in sidebar (show Boss + Workers)
         function updateAgentsList() {
-            if (agents.length === 0) {
-                agentsList.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-text">Нет активных агентов</div>
+            let html = '';
+            
+            // Boss card
+            if (hiveStatus.boss) {
+                html += `
+                    <div class="agent-card" style="border-color: var(--accent-color);">
+                        <div class="agent-card-header">
+                            <div class="agent-name">👑 ${escapeHtml(hiveStatus.boss.name)}</div>
+                            <div class="agent-status"></div>
+                        </div>
+                        <div class="agent-model">${escapeHtml(hiveStatus.boss.model)}</div>
+                        <div style="font-size:11px;color:var(--accent-color);margin-top:4px;">BOSS</div>
                     </div>
                 `;
-                return;
-            }
-
-            agentsList.innerHTML = agents.map(agent => `
-                <div class="agent-card">
-                    <div class="agent-card-header">
-                        <div class="agent-name">${escapeHtml(agent)}</div>
-                        <div class="agent-status"></div>
+            } else {
+                html += `
+                    <div class="agent-card" style="border-style:dashed;">
+                        <div class="empty-state-text">Первый агент станет БОССОМ</div>
                     </div>
-                    <div class="agent-model">Готов к работе</div>
-                </div>
-            `).join('');
+                `;
+            }
+            
+            // Workers cards
+            if (hiveStatus.workers.length > 0) {
+                hiveStatus.workers.forEach(worker => {
+                    html += `
+                        <div class="agent-card">
+                            <div class="agent-card-header">
+                                <div class="agent-name">🔧 ${escapeHtml(worker.name)}</div>
+                                <div class="agent-status"></div>
+                            </div>
+                            <div class="agent-model">${escapeHtml(worker.model)}</div>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escapeHtml(worker.role)}</div>
+                        </div>
+                    `;
+                });
+            } else if (hiveStatus.boss) {
+                html += `
+                    <div class="empty-state" style="padding:10px;">
+                        <div class="empty-state-text" style="font-size:12px;">Нет рабочих агентов. Добавьте исполнителей.</div>
+                    </div>
+                `;
+            }
+            
+            agentsList.innerHTML = html;
         }
 
         // Load memory
@@ -817,7 +837,7 @@
             `).join('');
         }
 
-        // Create agent
+        // Create agent (Hive architecture - first is Boss, rest are Workers)
         async function createAgent() {
             const name = document.getElementById('agentName').value.trim();
             const role = document.getElementById('agentRole').value.trim();
@@ -838,8 +858,7 @@
                     },
                     body: JSON.stringify({
                         name,
-                        role: role || 'Assistant',
-                        model: model || 'meta/llama-3.1-8b-instruct',
+                        role: role || 'worker',
                         base_url: baseUrl || 'https://integrate.api.nvidia.com/v1',
                         api_key: apiKey || 'skip'
                     })
@@ -848,7 +867,8 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    addSystemMessage(`Агент "${name}" успешно создан`);
+                    const agentType = data.role === 'boss' ? 'БОСС' : 'Исполнитель';
+                    addSystemMessage(`Создан ${agentType}: "${name}"`);
                     toggleCreateAgentForm();
                     loadAgents();
                     
@@ -867,15 +887,14 @@
             }
         }
 
-        // Send message
+        // Send message (no agent selection - always goes to Boss)
         function sendMessage() {
             const task = taskInput.value.trim();
-            const agent = agentSelect.value;
 
             if (!task || isProcessing) return;
 
-            if (!agent) {
-                alert('Выберите или создайте агента');
+            if (!hiveStatus.boss) {
+                alert('Сначала создайте агента-БОССА');
                 return;
             }
 
@@ -884,12 +903,12 @@
             taskInput.value = '';
             autoResizeTextarea();
 
-            // Start streaming
-            startStreaming(task, agent);
+            // Start streaming to Boss
+            startStreaming(task);
         }
 
-        // Start SSE streaming
-        function startStreaming(task, agent) {
+        // Start SSE streaming (Hive architecture)
+        function startStreaming(task) {
             isProcessing = true;
             sendBtn.disabled = true;
             sendBtn.textContent = 'Выполнение...';
@@ -897,55 +916,77 @@
             // Add typing indicator
             const typingId = addTypingIndicator();
 
-            const eventSource = new EventSource(`${API_BASE}/api/chat/stream?task=${encodeURIComponent(task)}&agent=${encodeURIComponent(agent)}`);
+            fetch(`${API_BASE}/api/chat/stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task })
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-            currentEventSource = eventSource;
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            removeTypingIndicator(typingId);
+                            isProcessing = false;
+                            sendBtn.disabled = false;
+                            sendBtn.textContent = 'Отправить';
+                            loadMemory();
+                            return;
+                        }
 
-            eventSource.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
 
-                    if (data.done) {
-                        eventSource.close();
-                        removeTypingIndicator(typingId);
-                        isProcessing = false;
-                        sendBtn.disabled = false;
-                        sendBtn.textContent = 'Отправить';
-                        loadMemory(); // Refresh memory after completion
-                        return;
-                    }
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    handleStreamEvent(data, typingId);
+                                } catch (e) {
+                                    console.error('Parse error:', e);
+                                }
+                            }
+                        }
 
-                    removeTypingIndicator(typingId);
-
-                    if (data.type === 'thought') {
-                        addProcessMessage('thought', data.content);
-                    } else if (data.type === 'action') {
-                        addProcessMessage('action', data.content);
-                    } else if (data.type === 'observation') {
-                        addProcessMessage('observation', data.content);
-                    } else if (data.type === 'message') {
-                        addAssistantMessage(data.content);
-                    } else if (data.type === 'error') {
-                        addProcessMessage('error', data.content);
-                        eventSource.close();
-                        isProcessing = false;
-                        sendBtn.disabled = false;
-                        sendBtn.textContent = 'Отправить';
-                    }
-                } catch (error) {
-                    console.error('Failed to parse SSE data:', error);
+                        readStream();
+                    });
                 }
-            };
 
-            eventSource.onerror = (error) => {
-                console.error('SSE Error:', error);
-                eventSource.close();
+                readStream();
+            })
+            .catch(error => {
+                console.error('Stream error:', error);
                 removeTypingIndicator(typingId);
+                addSystemMessage('Ошибка потока: ' + error.message);
                 isProcessing = false;
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Отправить';
-                addSystemMessage('Ошибка соединения с сервером');
-            };
+            });
+        }
+
+        // Handle stream events (Hive architecture)
+        function handleStreamEvent(data, typingId) {
+            const type = data.type;
+
+            if (type === 'delegation') {
+                // Boss delegates to worker
+                removeTypingIndicator(typingId);
+                addProcessMessage('delegation', data.content);
+            } else if (type === 'thought') {
+                addProcessMessage('thought', data.content);
+            } else if (type === 'action') {
+                addProcessMessage('action', data.content);
+            } else if (type === 'result' || type === 'message') {
+                removeTypingIndicator(typingId);
+                addAssistantMessage(data.content);
+            } else if (type === 'error') {
+                removeTypingIndicator(typingId);
+                addSystemMessage('Ошибка: ' + data.content);
+            }
         }
 
         // Add user message

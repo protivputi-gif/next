@@ -1,0 +1,235 @@
+2026-08-03 23:06:02,633 - INFO - Installing aiosqlite...
+2026-08-03 23:06:06,415 - INFO - Installing quart...
+2026-08-03 23:09:16,799 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:09:16,799 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:09:16,853 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:09:16,854 - INFO - [INIT] Database ready
+2026-08-03 23:09:16,855 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:09:16,855 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:09:36,574 - INFO - [AGENT] Created: boss @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:09:36,575 - INFO - [HIVE] Boss agent created: boss
+2026-08-03 23:09:36,579 - INFO - [AGENT] Created: coder @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:09:36,579 - INFO - [HIVE] Worker added: coder (worker)
+2026-08-03 23:09:54,037 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:09:54,038 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:09:54,091 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:09:54,092 - INFO - [INIT] Database ready
+2026-08-03 23:09:54,093 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:09:54,093 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:10:00,012 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:10:00,013 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:10:00,053 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:10:00,054 - INFO - [INIT] Database ready
+2026-08-03 23:10:00,054 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:10:00,055 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:10:07,071 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:10:07,071 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:10:07,112 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:10:07,113 - INFO - [INIT] Database ready
+2026-08-03 23:10:07,113 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:10:07,114 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:10:10,277 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:10:10,277 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:10:10,317 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:10:10,318 - INFO - [INIT] Database ready
+2026-08-03 23:10:20,278 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:10:20,290 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:10:20,333 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:10:20,334 - INFO - [INIT] Database ready
+2026-08-03 23:10:34,314 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:10:34,315 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:10:34,371 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:10:34,372 - INFO - [INIT] Database ready
+2026-08-03 23:10:34,373 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:10:34,373 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:10:39,838 - INFO - [AGENT] Created: boss @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:10:39,839 - INFO - [HIVE] Boss agent created: boss (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:10:39,854 - INFO - [AGENT] Created: coder @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:10:39,854 - INFO - [HIVE] Worker added: coder (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:10:39,873 - INFO - [HIVE] Boss received task: Привет! Кто ты и какие у тебя есть помощники?...
+2026-08-03 23:10:40,829 - INFO - [HIVE] Boss decided: delegate -> coder
+2026-08-03 23:10:40,829 - INFO - [coder] 🚀 Executing (simple=True)
+2026-08-03 23:10:56,324 - INFO - [coder] ✅ Completed
+2026-08-03 23:10:56,329 - INFO - [HIVE] Boss received task: Напиши Python скрипт, который считает сумму чисел ...
+2026-08-03 23:10:57,132 - INFO - [HIVE] Boss decided: delegate -> coder
+2026-08-03 23:10:57,133 - INFO - [coder] 🚀 Executing (simple=True)
+2026-08-03 23:11:00,009 - INFO - [coder] 🛠️ run_python(['code'])
+2026-08-03 23:11:00,009 - INFO - [TOOL] Python exec (24 chars)
+2026-08-03 23:11:01,135 - INFO - [coder] ✅ Completed
+2026-08-03 23:11:01,137 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:14:35,333 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:14:35,333 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:14:35,375 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:14:35,375 - INFO - [INIT] Database ready
+2026-08-03 23:14:44,258 - INFO - [HIVE] Boss received task: Проведи исследование рынка ИИ-ассистентов для разр...
+2026-08-03 23:14:45,416 - INFO - [HIVE] Boss decided: execute -> boss
+2026-08-03 23:14:45,417 - INFO - [boss] 🚀 Executing (simple=False)
+2026-08-03 23:14:50,575 - INFO - [boss] 🛠️ run_shell(['cmd'])
+2026-08-03 23:14:50,576 - INFO - [TOOL] Shell: pip install beautifulsoup4 scrapy
+2026-08-03 23:14:50,578 - INFO - run shell command 'pip install beautifulsoup4 scrapy': <_UnixSubprocessTransport pid=2035 running stdout=<_UnixReadPipeTransport fd=8 polling> stderr=<_UnixReadPipeTransport fd=11 polling>>
+2026-08-03 23:15:13,259 - INFO - <_UnixReadPipeTransport fd=11 polling> was closed by peer
+2026-08-03 23:15:13,270 - INFO - <_UnixReadPipeTransport fd=8 polling> was closed by peer
+2026-08-03 23:15:13,272 - INFO - <_UnixSubprocessTransport pid=2035 running stdout=<_UnixReadPipeTransport closed fd=8 closed> stderr=<_UnixReadPipeTransport closed fd=11 closed>> exited with return code 0
+2026-08-03 23:15:20,010 - INFO - [boss] 🛠️ run_shell(['cmd'])
+2026-08-03 23:15:20,011 - INFO - [TOOL] Shell: pip install -r requirements.txt
+2026-08-03 23:15:20,013 - INFO - run shell command 'pip install -r requirements.txt': <_UnixSubprocessTransport pid=2100 running stdout=<_UnixReadPipeTransport fd=8 polling> stderr=<_UnixReadPipeTransport fd=11 polling>>
+2026-08-03 23:15:23,014 - INFO - <_UnixReadPipeTransport fd=11 polling> was closed by peer
+2026-08-03 23:15:23,015 - INFO - <_UnixReadPipeTransport fd=8 polling> was closed by peer
+2026-08-03 23:15:23,030 - INFO - <_UnixSubprocessTransport pid=2100 running stdout=<_UnixReadPipeTransport closed fd=8 closed> stderr=<_UnixReadPipeTransport closed fd=11 closed>> exited with return code 0
+2026-08-03 23:15:28,016 - INFO - [boss] ✅ Completed
+2026-08-03 23:15:28,018 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:18:13,051 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:18:13,051 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:18:13,094 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:18:13,095 - INFO - [INIT] Database ready
+2026-08-03 23:18:24,538 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:18:24,538 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:18:24,594 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:18:24,595 - INFO - [INIT] Database ready
+2026-08-03 23:18:32,757 - INFO - [HIVE] Boss received task: Найди свежие новости за последние 24 часа о развит...
+2026-08-03 23:18:34,399 - INFO - [HIVE] Boss decided: delegate -> coder
+2026-08-03 23:18:34,399 - INFO - [coder] 🚀 Executing (simple=False)
+2026-08-03 23:18:46,995 - INFO - [coder] 🛠️ fetch_url(['url'])
+2026-08-03 23:18:53,440 - INFO - [coder] ✅ Completed
+2026-08-03 23:18:53,442 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:18:57,390 - INFO - [HIVE] Boss received task: Найди свежие новости за последние 24 часа о развит...
+2026-08-03 23:18:58,324 - INFO - [HIVE] Boss decided: delegate -> coder
+2026-08-03 23:18:58,325 - INFO - [coder] 🚀 Executing (simple=False)
+2026-08-03 23:19:00,065 - INFO - [coder] 🛠️ fetch_url(['url'])
+2026-08-03 23:19:02,912 - INFO - [coder] 🛠️ fetch_url(['url'])
+2026-08-03 23:19:06,121 - INFO - [coder] 🛠️ run_python(['code'])
+2026-08-03 23:19:06,121 - INFO - [TOOL] Python exec (452 chars)
+2026-08-03 23:19:10,481 - INFO - [coder] ✅ Completed
+2026-08-03 23:19:14,056 - INFO - [HIVE] Boss received task: Зайди на сайт https://news.ycombinator.com/ и найд...
+2026-08-03 23:19:14,847 - INFO - [HIVE] Boss decided: execute -> boss
+2026-08-03 23:19:14,847 - INFO - [boss] 🚀 Executing (simple=False)
+2026-08-03 23:19:21,212 - INFO - [boss] 🛠️ fetch_url(['url'])
+2026-08-03 23:20:17,534 - INFO - [HIVE] Boss received task: Используй fetch_url чтобы прочитать https://r.jina...
+2026-08-03 23:20:18,345 - INFO - [HIVE] Boss decided: delegate -> coder
+2026-08-03 23:20:18,345 - INFO - [coder] 🚀 Executing (simple=False)
+2026-08-03 23:20:21,280 - INFO - [coder] 🛠️ fetch_url(['url'])
+2026-08-03 23:20:29,293 - INFO - [coder] ✅ Completed
+2026-08-03 23:24:26,015 - INFO - [AGENT] Created: boss @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:24:26,015 - INFO - [HIVE] Worker added: boss (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:24:26,018 - INFO - [AGENT] Created: dev @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:24:26,018 - INFO - [HIVE] Worker added: dev (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:24:26,020 - INFO - [AGENT] Created: researcher @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:24:26,020 - INFO - [HIVE] Worker added: researcher (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:24:26,021 - INFO - [AGENT] Created: analyst @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:24:26,021 - INFO - [HIVE] Worker added: analyst (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:24:45,434 - INFO - [HIVE] Boss received task: Напиши функцию на Python для вычисления чисел Фибо...
+2026-08-03 23:24:47,066 - INFO - [HIVE] Boss decided: execute -> boss
+2026-08-03 23:24:47,066 - INFO - [boss] 🚀 Executing (simple=False)
+2026-08-03 23:24:48,151 - INFO - [boss] 🛠️ run_python(['code'])
+2026-08-03 23:24:48,151 - INFO - [TOOL] Python exec (229 chars)
+2026-08-03 23:24:48,808 - INFO - [boss] 🛠️ run_python(['code'])
+2026-08-03 23:24:48,808 - INFO - [TOOL] Python exec (13 chars)
+2026-08-03 23:24:49,801 - INFO - [boss] 🛠️ run_python(['code'])
+2026-08-03 23:24:49,801 - INFO - [TOOL] Python exec (249 chars)
+2026-08-03 23:24:50,559 - INFO - [boss] ✅ Completed
+2026-08-03 23:24:50,562 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:24:52,571 - INFO - [HIVE] Boss received task: Проанализируй список чисел [10, 20, 30, 40, 50] и ...
+2026-08-03 23:24:54,260 - INFO - [HIVE] Boss decided: execute -> boss
+2026-08-03 23:24:54,260 - INFO - [boss] 🚀 Executing (simple=False)
+2026-08-03 23:24:55,313 - INFO - [boss] 🛠️ run_python(['code'])
+2026-08-03 23:24:55,313 - INFO - [TOOL] Python exec (157 chars)
+2026-08-03 23:24:56,160 - INFO - [boss] 🛠️ run_python(['code'])
+2026-08-03 23:24:56,160 - INFO - [TOOL] Python exec (140 chars)
+2026-08-03 23:24:56,663 - INFO - [boss] ✅ Completed
+2026-08-03 23:24:56,666 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:25:23,995 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:25:23,995 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:25:24,039 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:25:24,039 - INFO - [INIT] Database ready
+2026-08-03 23:25:24,050 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:25:24,050 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:25:30,412 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:25:30,412 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:25:30,454 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:25:30,455 - INFO - [INIT] Database ready
+2026-08-03 23:25:41,637 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:25:41,637 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:25:41,692 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:25:41,694 - INFO - [INIT] Database ready
+2026-08-03 23:25:51,276 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:25:51,276 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:25:51,333 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:25:51,334 - INFO - [INIT] Database ready
+2026-08-03 23:26:03,850 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:26:03,850 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:26:03,899 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:26:03,910 - INFO - [INIT] Database ready
+2026-08-03 23:26:03,911 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:26:03,911 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:26:11,812 - INFO - [AGENT] Created: boss @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:11,812 - INFO - [HIVE] Boss agent created: boss (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:26:11,815 - INFO - [AGENT] Created: dev @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:11,815 - INFO - [HIVE] Worker added: dev (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:26:11,817 - INFO - [AGENT] Created: researcher @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:11,817 - INFO - [HIVE] Worker added: researcher (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:26:11,819 - INFO - [AGENT] Created: analyst @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:11,819 - INFO - [HIVE] Worker added: analyst (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:26:14,754 - INFO - [HIVE] Boss received task: Напиши функцию на Python для вычисления чисел Фибо...
+2026-08-03 23:26:15,539 - INFO - [HIVE] Boss decided: delegate -> dev
+2026-08-03 23:26:15,540 - INFO - [dev] 🚀 Executing (simple=True)
+2026-08-03 23:26:18,654 - INFO - [dev] ✅ Completed
+2026-08-03 23:26:18,658 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:26:20,666 - INFO - [HIVE] Boss received task: Проанализируй список чисел [10, 20, 30, 40, 50] и ...
+2026-08-03 23:26:21,489 - INFO - [HIVE] Boss decided: delegate -> analyst
+2026-08-03 23:26:21,490 - INFO - [analyst] 🚀 Executing (simple=True)
+2026-08-03 23:26:26,624 - INFO - [analyst] ✅ Completed
+2026-08-03 23:26:26,628 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:26:33,099 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:26:33,110 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:26:33,152 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:26:33,153 - INFO - [INIT] Database ready
+2026-08-03 23:26:33,154 - INFO - <Server sockets=(<asyncio.TransportSocket fd=7, family=2, type=1, proto=0, laddr=('127.0.0.1', 5000)>,)> is serving
+2026-08-03 23:26:33,154 - INFO - Running on http://127.0.0.1:5000 (CTRL + C to quit)
+2026-08-03 23:26:36,810 - INFO - 🚀 Nexus Agent v2.0 - Fast & Simple
+2026-08-03 23:26:36,810 - INFO - Open http://127.0.0.1:5000
+2026-08-03 23:26:36,852 - INFO - [GRAPH] Loaded from DB
+2026-08-03 23:26:36,853 - INFO - [INIT] Database ready
+2026-08-03 23:26:46,456 - INFO - [AGENT] Created: boss @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:46,456 - INFO - [HIVE] Boss agent created: boss (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:26:46,471 - INFO - [AGENT] Created: dev @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:46,471 - INFO - [HIVE] Worker added: dev (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:26:46,473 - INFO - [AGENT] Created: researcher @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:46,473 - INFO - [HIVE] Worker added: researcher (model: meta/llama-3.1-8b-instruct)
+2026-08-03 23:26:46,475 - INFO - [AGENT] Created: analyst @ https://integrate.api.nvidia.com/v1
+2026-08-03 23:26:46,475 - INFO - [HIVE] Worker added: analyst (model: nvidia/nemotron-3-nano-30b-a3b)
+2026-08-03 23:26:47,175 - INFO - [HIVE] Boss received task: Напиши функцию на Python для вычисления чисел Фибо...
+2026-08-03 23:26:47,819 - INFO - [HIVE] Boss decided: delegate -> dev
+2026-08-03 23:26:47,819 - INFO - [dev] 🚀 Executing (simple=True)
+2026-08-03 23:26:51,143 - INFO - [dev] ✅ Completed
+2026-08-03 23:26:51,145 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:26:53,154 - INFO - [HIVE] Boss received task: Проанализируй список чисел [10, 20, 30, 40, 50] и ...
+2026-08-03 23:26:54,060 - INFO - [HIVE] Boss decided: delegate -> analyst
+2026-08-03 23:26:54,060 - INFO - [analyst] 🚀 Executing (simple=True)
+2026-08-03 23:26:55,487 - INFO - [analyst] ✅ Completed
+2026-08-03 23:26:55,489 - INFO - [MEMORY] Episode saved: hive
+2026-08-03 23:27:07,515 - INFO - [HIVE] Boss received task: Напиши функцию Python для расчёта чисел Фибоначчи ...
+2026-08-03 23:27:08,227 - INFO - [HIVE] Boss decided: delegate -> dev
+2026-08-03 23:27:08,227 - INFO - [dev] 🚀 Executing (simple=True)
+2026-08-03 23:27:11,462 - INFO - [dev] ✅ Completed
+2026-08-03 23:27:13,471 - INFO - [HIVE] Boss received task: Проанализируй данные [10, 20, 30, 40, 50]: найди с...
+2026-08-03 23:27:14,174 - INFO - [HIVE] Boss decided: delegate -> analyst
+2026-08-03 23:27:14,174 - INFO - [analyst] 🚀 Executing (simple=True)
+2026-08-03 23:27:17,608 - INFO - [analyst] ✅ Completed
+2026-08-03 23:27:19,616 - INFO - [HIVE] Boss received task: Найди последнюю информацию о ценах на NVIDIA акции...
+2026-08-03 23:27:20,203 - INFO - [HIVE] Boss decided: delegate -> researcher
+2026-08-03 23:27:20,204 - INFO - [researcher] 🚀 Executing (simple=True)
+2026-08-03 23:27:20,897 - INFO - [researcher] 🛠️ fetch_url(['url'])
+2026-08-03 23:27:21,883 - INFO - [researcher] 🛠️ fetch_url(['url', 'params', 'headers'])
+2026-08-03 23:27:23,068 - INFO - [researcher] 🛠️ fetch_url(['url'])
+2026-08-03 23:27:24,389 - WARNING - [researcher] Invalid JSON: {"action":"final_answer","content":"{}}"}
+
+Note: The content is the last available stock price data 
+2026-08-03 23:27:25,595 - WARNING - [researcher] Invalid JSON: {"action":"final_answer","content":"{"Time Series (Daily)":{"2026-08-03":{"1. close":"206.6400"}}}"}
+2026-08-03 23:27:26,454 - WARNING - [researcher] Invalid JSON: {"action":"final_answer","content":"{"Time_Series_Daily":{"2026-08-03":{"1. close":"206.6400"}}}"}
+
+
+2026-08-03 23:27:27,591 - INFO - [researcher] ✅ Completed
+2026-08-03 23:27:28,239 - INFO - [HIVE] Boss received task: Напиши функцию Python для расчёта чисел Фибоначчи ...
+2026-08-03 23:27:28,991 - INFO - [HIVE] Boss decided: delegate -> dev
+2026-08-03 23:27:28,992 - INFO - [dev] 🚀 Executing (simple=True)
+2026-08-03 23:27:47,679 - INFO - [dev] ✅ Completed
