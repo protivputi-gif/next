@@ -18,12 +18,22 @@ for pkg, name in [('aiohttp', 'aiohttp'), ('aiosqlite', 'aiosqlite'), ('quart', 
 import aiohttp, aiosqlite
 from quart import Quart, request, jsonify, Response
 
-DB_PATH = "nexus_memory.db"
+DB_PATH = "nexus_hive.db"
 app = Quart(__name__)
-agents_registry = {}
 
-# Optimized config - FAST by default
-CONFIG = {"max_iterations": 6, "cache_enabled": True, "simple_threshold": 150}
+# Hierarchy State
+boss_agent: Optional['Agent'] = None
+workers: Dict[str, 'Agent'] = {}
+
+# Optimized config for multi-agent
+CONFIG = {
+    "max_iterations": 10,          # More iterations for delegation logic
+    "cache_enabled": True,
+    "simple_threshold": 150,
+    "delegation_timeout": 120,
+    "boss_model": "meta/llama-3.1-70b-instruct",
+    "worker_model": "meta/llama-3.1-8b-instruct"
+}
 response_cache = {}
 
 class GraphMemory:
@@ -350,7 +360,81 @@ Output JSON only: {{"action":"tool","args":{{}}}} or {{"action":"final_answer","
         
         yield {'type': 'message', 'content': "Max iterations"}
 
-# Simple orchestrator
+# Hive Orchestration - Multi-agent delegation
+async def execute_hive_task(task, boss, worker_pool, image_data=None):
+    """Boss analyzes task and delegates to workers"""
+    logger.info(f"[HIVE] Boss received task: {task[:50]}...")
+    
+    # Build worker descriptions with roles
+    worker_desc = []
+    for name, agent in worker_pool.items():
+        worker_desc.append(f"- {name} (role: {agent.role}): specialized in {agent.role.replace('_', ' ')}")
+    workers_info = "\n".join(worker_desc) if worker_desc else "No workers available"
+    
+    # Step 1: Boss analyzes the task and decides delegation
+    delegation_prompt = f"""You are the BOSS agent managing a team. Analyze this task and decide how to execute it.
+
+Task: {task}
+
+Your Team:
+{workers_info}
+
+Decision Rules:
+1. If task requires CODING/PYTHON/FUNCTIONS → delegate to worker with role 'coder' or 'developer'
+2. If task requires DATA ANALYSIS/STATISTICS/CALCULATIONS → delegate to worker with role 'data_analysis' or 'analyst'  
+3. If task requires WEB SEARCH/NEWS/RESEARCH → delegate to worker with role 'web_search' or 'researcher'
+4. If task is GENERAL MANAGEMENT/COORDINATION → execute yourself
+5. If no suitable worker exists → execute yourself
+
+Response Format (JSON only):
+To delegate: {{"action": "delegate", "agent": "worker_name", "instruction": "specific detailed instruction"}}
+To execute yourself: {{"action": "execute", "agent": "{boss.name}", "instruction": "what you will do"}}
+
+Output ONLY valid JSON. No markdown. No extra text."""
+
+    ctx = await get_context(task.split())
+    msgs = [{"role": "system", "content": delegation_prompt}, {"role": "user", "content": "Decide now"}]
+    
+    try:
+        decision = boss._parse_json(await boss._call_llm(msgs, image_data))
+        if not decision:
+            raise Exception("Boss failed to make decision")
+        
+        action = decision.get('action', 'execute')
+        target_agent_name = decision.get('agent', boss.name)
+        instruction = decision.get('instruction', task)
+        
+        logger.info(f"[HIVE] Boss decided: {action} -> {target_agent_name}")
+        
+        # Yield delegation event for streaming
+        yield {'type': 'delegation', 'worker': target_agent_name, 'task': instruction, 'content': f"Boss delegates to {target_agent_name}: {instruction}"}
+        
+        # Select agent
+        if target_agent_name == boss.name:
+            executor = boss
+        elif target_agent_name in worker_pool:
+            executor = worker_pool[target_agent_name]
+        else:
+            executor = boss
+        
+        # Execute the task
+        result = await executor.execute(instruction, ctx, image_data=image_data)
+        
+        yield {'type': 'result', 'content': result}
+        
+        # Save to memory
+        await save_episode("hive", str(result)[:200], True)
+        
+    except Exception as e:
+        logger.error(f"[HIVE] Error: {e}")
+        yield {'type': 'error', 'content': str(e)}
+
+async def execute_hive_task_stream(task, boss, worker_pool, image_data=None):
+    """Streaming version of hive execution"""
+    async for event in execute_hive_task(task, boss, worker_pool, image_data):
+        yield event
+
+# Simple orchestrator (legacy)
 async def execute_graph(task, agent, image_data=None):
     """Execute task directly (no complex planning)"""
     ctx = await get_context(task.split())
@@ -365,70 +449,77 @@ async def index():
 
 @app.route('/api/agents', methods=['POST'])
 async def add_agent():
+    global boss_agent, workers
     data = await request.get_json()
     name = data.get('name', 'Agent1')
-    if name in agents_registry: return jsonify({'error': 'Exists'}), 400
-    
-    agent = Agent(name, data.get('role', 'Assistant'), data.get('model', 'meta/llama-3.1-8b-instruct'),
-                  data.get('base_url', 'https://integrate.api.nvidia.com/v1'), data.get('api_key', ''))
-    
-    # Test availability - skip check if api_key is empty or 'skip' for testing
     api_key = data.get('api_key', '')
-    if api_key and api_key != 'skip':
-        ok = await check_model(agent.model, agent.base_url, agent.api_key)
-        if not ok['available']: 
-            logger.warning(f"[API] Model check failed: {ok['message']}")
-            # Still allow adding for testing purposes
-            # return jsonify({'error': ok['message']}), 400
+    base_url = data.get('base_url', 'https://integrate.api.nvidia.com/v1')
+    model = data.get('model', None)
+    role = data.get('role', 'worker').lower()
     
-    agents_registry[name] = agent
-    logger.info(f"[API] Agent added: {name}")
-    return jsonify({'success': True, 'name': name})
+    # Check if this is the first agent (Boss)
+    if boss_agent is None:
+        # First agent is always the Boss
+        boss_model = model if model else CONFIG["boss_model"]
+        boss_agent = Agent(name, "boss", boss_model, base_url, api_key)
+        logger.info(f"[HIVE] Boss agent created: {name} (model: {boss_model})")
+        return jsonify({'success': True, 'name': name, 'role': 'boss'})
+    
+    # Subsequent agents are workers
+    if name in workers:
+        return jsonify({'error': 'Worker exists'}), 400
+    
+    worker_model = model if model else CONFIG["worker_model"]
+    worker = Agent(name, role, worker_model, base_url, api_key)
+    workers[name] = worker
+    logger.info(f"[HIVE] Worker added: {name} (model: {worker_model})")
+    return jsonify({'success': True, 'name': name, 'role': 'worker'})
 
 @app.route('/api/agents', methods=['GET'])
 async def list_agents():
-    return jsonify({'agents': list(agents_registry.keys())})
+    result = {'boss': None, 'workers': []}
+    if boss_agent:
+        result['boss'] = {'name': boss_agent.name, 'model': boss_agent.model}
+    for name, agent in workers.items():
+        result['workers'].append({'name': name, 'role': agent.role, 'model': agent.model})
+    return jsonify(result)
 
 @app.route('/api/chat', methods=['POST'])
 async def chat():
+    global boss_agent, workers
     data = await request.get_json()
-    task = data.get('task', '')
-    agent_name = data.get('agent')
+    task = data.get('message', data.get('task', ''))
     image = data.get('image')
     
     if not task: return jsonify({'error': 'No task'}), 400
-    if agent_name and agent_name not in agents_registry: return jsonify({'error': 'Agent not found'}), 404
+    if not boss_agent: return jsonify({'error': 'No boss agent. Add first agent.'}), 400
     
-    agent = agents_registry.get(agent_name)
-    if not agent: return jsonify({'error': 'No agents available. Add one first.'}), 400
-    
-    result = await execute_graph(task, agent, image)
-    return jsonify({'response': result})
+    # Boss receives the task and decides delegation
+    async for event in execute_hive_task(task, boss_agent, workers, image):
+        if event['type'] == 'result':
+            return jsonify({'response': event['content'], 'iterations': 1})
+        elif event['type'] == 'error':
+            return jsonify({'error': event['content']}), 500
+    return jsonify({'response': 'No response generated'})
 
 @app.route('/api/chat/stream', methods=['POST'])
 async def chat_stream():
     from quart import Response
+    global boss_agent, workers
     data = await request.get_json()
-    task = data.get('task', '')
-    agent_name = data.get('agent')
+    task = data.get('message', data.get('task', ''))
     image = data.get('image')
     
     if not task: return jsonify({'error': 'No task'}), 400
-    agent = agents_registry.get(agent_name)
-    if not agent: return jsonify({'error': 'No agents'}), 400
+    if not boss_agent: return jsonify({'error': 'No boss agent'}), 400
     
     async def gen():
         try:
-            ctx = await get_context(task.split())
-            if hasattr(agent, 'execute_stream'):
-                async for event in agent.execute_stream(task, ctx, image_data=image):
-                    yield f"data: {json.dumps(event)}\n\n"
-            else:
-                result = await agent.execute(task, ctx, image_data=image)
-                yield f"data: {json.dumps({'response': result})}\n\n"
+            async for event in execute_hive_task_stream(task, boss_agent, workers, image):
+                yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
             yield "data: {\"done\": true}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
     
     return Response(gen(), mimetype='text/event-stream')
 
