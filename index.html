@@ -3,822 +3,1073 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus AI Agent</title>
+    <title>Nexus Agent</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root {
             --bg-primary: #FFFFFF;
-            --bg-secondary: #FAFAFA;
-            --bg-tertiary: #F5F5F5;
-            --border-color: #EAEAEA;
-            --text-primary: #1A1A1A;
-            --text-secondary: #666666;
-            --text-tertiary: #999999;
-            --accent-primary: #0066FF;
-            --accent-hover: #0052CC;
-            --accent-light: #F0F6FF;
-            --success: #00C853;
-            --success-bg: #E8F5E9;
-            --warning: #FFAB00;
-            --warning-bg: #FFF8E1;
-            --error: #FF3B30;
-            --error-bg: #FFEBEE;
-            --thought-bg: #F8F9FA;
-            --action-bg: #FFF3E0;
-            --result-bg: #E8F5E9;
+            --bg-secondary: #F9FAFB;
+            --bg-tertiary: #F3F4F6;
+            --text-primary: #111827;
+            --text-secondary: #4B5563;
+            --text-muted: #9CA3AF;
+            --border-color: #E5E7EB;
+            --accent-color: #2563EB;
+            --accent-hover: #1D4ED8;
+            --success-color: #059669;
+            --warning-color: #D97706;
+            --error-color: #DC2626;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --radius: 8px;
+            --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg-secondary); color: var(--text-primary); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-        
-        /* Header */
-        .header { padding: 14px 32px; background: var(--bg-primary); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; }
-        .logo { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent-primary), #4C9AFF); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: white; }
-        .agent-status { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: var(--bg-tertiary); border-radius: 99px; font-size: 12px; color: var(--text-secondary); }
-        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        
-        /* Main Layout */
-        .main-container { flex: 1; display: flex; overflow: hidden; }
-        .chat-section { flex: 1; display: flex; flex-direction: column; max-width: 950px; margin: 0 auto; width: 100%; }
-        .messages-container { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; scroll-behavior: smooth; }
-        
-        /* Messages */
-        .message { display: flex; gap: 12px; max-width: 80%; animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .message.user { align-self: flex-end; flex-direction: row-reverse; }
-        .message-avatar { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-        .message.agent .message-avatar { background: linear-gradient(135deg, var(--accent-primary), #4C9AFF); }
-        .message.user .message-avatar { background: var(--bg-tertiary); }
-        .message-content { padding: 14px 18px; border-radius: 14px; line-height: 1.6; font-size: 14px; }
-        .message.agent .message-content { background: var(--bg-primary); border: 1px solid var(--border-color); border-bottom-left-radius: 4px; }
-        .message.user .message-content { background: var(--accent-primary); color: white; border-bottom-right-radius: 4px; }
-        .message.system { align-self: center; max-width: 100%; }
-        .message.system .message-content { background: transparent; color: var(--text-tertiary); font-size: 13px; padding: 8px 16px; }
-        
-        /* Stream Container with Sections */
-        .stream-container { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; width: 100%; margin-top: 4px; }
-        .stream-header { padding: 10px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
-        .stream-status { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-primary); animation: pulse 1.5s infinite; }
-        .stream-section { border-bottom: 1px solid var(--border-color); }
-        .stream-section:last-child { border-bottom: none; }
-        .section-header { padding: 10px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
-        .section-header.thoughts { background: var(--thought-bg); color: #5C6BC0; }
-        .section-header.actions { background: var(--action-bg); color: #F57C00; }
-        .section-header.result { background: var(--result-bg); color: #2E7D32; }
-        .section-icon { font-size: 14px; }
-        .section-content { padding: 14px 16px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; font-family: 'SF Mono', Monaco, 'Consolas', monospace; max-height: 400px; overflow-y: auto; }
-        .section-content.empty { color: var(--text-tertiary); font-style: italic; }
-        .section-content.collapsed { display: none; }
-        
-        /* Code Blocks in Stream */
-        .stream-code { background: #1E1E1E; color: #D4D4D4; padding: 12px; border-radius: 8px; margin: 8px 0; overflow-x: auto; font-size: 12px; }
-        .stream-code code { font-family: 'SF Mono', Monaco, monospace; }
-        
-        /* Input Section */
-        .input-section { padding: 16px 24px 20px; background: var(--bg-primary); border-top: 1px solid var(--border-color); }
-        .input-wrapper { background: var(--bg-primary); border: 1.5px solid var(--border-color); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; transition: all 0.2s; }
-        .input-wrapper:focus-within { border-color: var(--accent-primary); box-shadow: 0 0 0 4px var(--accent-light); }
-        .file-preview { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-tertiary); border-radius: 8px; font-size: 12px; color: var(--text-secondary); }
-        .file-preview-remove { margin-left: auto; cursor: pointer; padding: 4px 8px; border-radius: 6px; color: var(--text-tertiary); font-size: 16px; }
-        .file-preview-remove:hover { background: var(--border-color); color: var(--text-primary); }
-        .input-row { display: flex; gap: 10px; align-items: flex-end; }
-        .chat-input { flex: 1; background: transparent; border: none; color: var(--text-primary); font-size: 14px; font-family: inherit; resize: none; max-height: 160px; min-height: 22px; line-height: 1.5; }
-        .chat-input:focus { outline: none; }
-        .chat-input::placeholder { color: var(--text-tertiary); }
-        .send-btn { width: 42px; height: 42px; border-radius: 10px; background: var(--accent-primary); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.2s; }
-        .send-btn:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
-        .send-btn:disabled { background: var(--bg-tertiary); color: var(--text-tertiary); cursor: not-allowed; }
-        .attach-btn { width: 42px; height: 42px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.2s; }
-        .attach-btn:hover { background: var(--border-color); color: var(--text-primary); }
-        
-        /* Sidebar */
-        .sidebar { position: fixed; right: -400px; top: 0; width: 400px; height: 100vh; background: var(--bg-primary); border-left: 1px solid var(--border-color); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; display: flex; flex-direction: column; box-shadow: -4px 0 12px rgba(0,0,0,0.05); }
-        .sidebar.open { right: 0; }
-        .sidebar-header { padding: 18px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--bg-secondary); }
-        .sidebar-title { font-size: 15px; font-weight: 600; }
-        .close-sidebar { background: none; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 20px; padding: 6px; border-radius: 8px; transition: all 0.2s; }
-        .close-sidebar:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-        .sidebar-content { flex: 1; overflow-y: auto; padding: 20px; }
-        .sidebar-section { margin-bottom: 28px; }
-        .sidebar-section h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-tertiary); margin-bottom: 14px; }
-        
-        /* Form Elements */
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
-        .form-input { width: 100%; padding: 10px 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 13px; font-family: inherit; transition: all 0.2s; }
-        .form-input:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-light); }
-        .form-input.error { border-color: var(--error); background: var(--error-bg); }
-        .form-hint { font-size: 10px; color: var(--text-tertiary); margin-top: 5px; line-height: 1.4; }
-        .form-hint a { color: var(--accent-primary); text-decoration: none; }
-        .form-hint a:hover { text-decoration: underline; }
-        .btn-primary { width: 100%; padding: 11px 18px; background: var(--accent-primary); border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
-        .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-        .btn-primary:disabled { background: var(--bg-tertiary); color: var(--text-tertiary); cursor: not-allowed; }
-        
-        /* Agent List */
-        .agent-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; margin-bottom: 8px; transition: all 0.2s; }
-        .agent-item:hover { border-color: var(--accent-primary); }
-        .agent-info { display: flex; align-items: center; gap: 10px; }
-        .agent-icon { width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, var(--accent-primary), #4C9AFF); display: flex; align-items: center; justify-content: center; font-size: 16px; }
-        .agent-name { font-size: 13px; font-weight: 500; }
-        .agent-model { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
-        .status-indicator { width: 9px; height: 9px; border-radius: 50%; background: var(--success); }
-        
-        /* Validation Messages */
-        .validation-message { margin-top: 12px; padding: 12px; border-radius: 8px; font-size: 12px; line-height: 1.5; display: none; }
-        .validation-message.success { background: var(--success-bg); color: #2E7D32; border: 1px solid #C8E6C9; }
-        .validation-message.error { background: var(--error-bg); color: #C62828; border: 1px solid #FFCDD2; }
-        .validation-message.info { background: var(--accent-light); color: #1565C0; border: 1px solid #BBDEFB; }
-        
-        /* Memory Items */
-        .memory-item { padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; font-size: 12px; line-height: 1.6; }
-        .memory-item strong { color: var(--accent-primary); font-weight: 600; }
-        
-        /* Toggle Button */
-        .toggle-sidebar { position: fixed; right: 20px; bottom: 20px; width: 52px; height: 52px; border-radius: 14px; background: var(--bg-primary); border: 1px solid var(--border-color); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: all 0.2s; }
-        .toggle-sidebar:hover { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
-        
-        /* Typing Indicator */
-        .typing-indicator { display: flex; gap: 5px; padding: 12px 16px; }
-        .typing-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); animation: typing 1.4s infinite; }
-        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes typing { 0%, 100% { transform: translateY(0); opacity: 0.4; } 50% { transform: translateY(-4px); opacity: 1; } }
-        
-        /* Progress Bar */
-        .progress-bar { height: 3px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; margin-top: 8px; }
-        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent-primary), #4C9AFF); width: 0%; transition: width 0.3s; }
-        
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* Layout */
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Left Panel - Workspace */
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            background: var(--bg-primary);
+        }
+
+        .workspace-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .workspace-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .agent-selector {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .agent-select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            background: var(--bg-primary);
+            font-size: 14px;
+            color: var(--text-primary);
+            cursor: pointer;
+            min-width: 180px;
+        }
+
+        .agent-select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 85%;
+            padding: 16px 20px;
+            border-radius: var(--radius);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: var(--accent-color);
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 2px;
+        }
+
+        .message.system {
+            align-self: center;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: 13px;
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+
+        .message.process {
+            align-self: flex-start;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 12px 16px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .process-thought { color: var(--accent-color); }
+        .process-action { color: var(--warning-color); }
+        .process-observation { color: var(--success-color); }
+        .process-error { color: var(--error-color); }
+
+        .message-content {
+            word-wrap: break-word;
+        }
+
+        .message-content p {
+            margin-bottom: 12px;
+        }
+
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .message-content pre {
+            background: var(--bg-tertiary);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0;
+            font-family: var(--font-mono);
+            font-size: 13px;
+        }
+
+        .message-content code {
+            font-family: var(--font-mono);
+            font-size: 13px;
+        }
+
+        .message:not(.user) .message-content code {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .user .message-content code {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .input-area {
+            padding: 20px 24px;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-primary);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .task-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            font-size: 15px;
+            font-family: var(--font-sans);
+            resize: none;
+            min-height: 48px;
+            max-height: 150px;
+            line-height: 1.5;
+        }
+
+        .task-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .send-btn {
+            padding: 12px 24px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .send-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .send-btn:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Right Panel - Context & Control */
+        .sidebar {
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .sidebar-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .sidebar-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+
+        .section {
+            margin-bottom: 28px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .refresh-btn {
+            background: none;
+            border: none;
+            color: var(--accent-color);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--bg-tertiary);
+        }
+
+        /* Agent Cards */
+        .agent-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+
+        .agent-card:hover {
+            border-color: var(--accent-color);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .agent-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .agent-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+
+        .agent-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success-color);
+        }
+
+        .agent-model {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        /* Memory Lessons */
+        .lesson-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+
+        .lesson-keyword {
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--accent-color);
+            margin-bottom: 6px;
+        }
+
+        .lesson-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .lesson-count {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        /* Create Agent Form */
+        .create-agent-form {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: var(--font-sans);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .create-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .create-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .toggle-form-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-form-btn:hover {
+            background: var(--border-color);
+        }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Loading indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 8px 0;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+            30% {
+                transform: translateY(-4px);
+                opacity: 1;
+            }
+        }
+
         /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr;
+            }
+
+            .sidebar {
+                border-top: 1px solid var(--border-color);
+            }
+        }
     </style>
 </head>
 <body>
-    <header class="header">
-        <div class="logo">
-            <div class="logo-icon">N</div>
-            <span>Nexus AI</span>
-        </div>
-        <div class="agent-status">
-            <div class="status-dot"></div>
-            <span id="active-agents-count">0 агентов</span>
-        </div>
-    </header>
-    
-    <div class="main-container">
-        <div class="chat-section">
-            <div class="messages-container" id="chat-messages">
-                <div class="message system">
-                    <div class="message-content">👋 Привет! Я Nexus — ваш автономный AI-агент. Опишите задачу, и я выполню её шаг за шагом.</div>
+    <div class="container">
+        <!-- Left Panel: Workspace -->
+        <div class="workspace">
+            <div class="workspace-header">
+                <div class="workspace-title">Nexus Agent</div>
+                <div class="agent-selector">
+                    <select id="agentSelect" class="agent-select">
+                        <option value="">Загрузка агентов...</option>
+                    </select>
                 </div>
             </div>
-            
-            <div class="input-section">
+
+            <div id="chatContainer" class="chat-container">
+                <div class="empty-state">
+                    <div class="empty-state-icon">💬</div>
+                    <div class="empty-state-text">Введите задачу для начала работы</div>
+                </div>
+            </div>
+
+            <div class="input-area">
                 <div class="input-wrapper">
-                    <div id="file-preview-container" style="display:none;">
-                        <div class="file-preview">
-                            <span>📎</span>
-                            <span id="file-preview-name"></span>
-                            <span class="file-preview-remove" onclick="removeFile()">✕</span>
+                    <textarea 
+                        id="taskInput" 
+                        class="task-input" 
+                        placeholder="Опишите задачу..."
+                        rows="1"
+                    ></textarea>
+                    <button id="sendBtn" class="send-btn">Отправить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Context & Control -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">Контекст и управление</div>
+                <div class="sidebar-subtitle">Память и конфигурация</div>
+            </div>
+
+            <div class="sidebar-content">
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div id="agentCount" class="stat-value">0</div>
+                        <div class="stat-label">Агентов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="memoryNodes" class="stat-value">0</div>
+                        <div class="stat-label">Узлов памяти</div>
+                    </div>
+                </div>
+
+                <!-- Agents Section -->
+                <div class="section">
+                    <div class="section-title">
+                        Активные агенты
+                        <button id="refreshAgentsBtn" class="refresh-btn">↻</button>
+                    </div>
+                    <div id="agentsList">
+                        <div class="empty-state">
+                            <div class="empty-state-text">Нет активных агентов</div>
                         </div>
                     </div>
-                    <div class="input-row">
-                        <input type="file" id="file-input" accept="image/*" style="display:none;" onchange="handleFileSelect(event)">
-                        <button class="attach-btn" onclick="document.getElementById('file-input').click()" title="Прикрепить изображение">📎</button>
-                        <textarea id="task-input" class="chat-input" rows="1" placeholder="Опишите задачу..." onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
-                        <button onclick="runTask()" id="run-btn" class="send-btn" title="Отправить">➤</button>
+                    
+                    <button id="toggleCreateAgentBtn" class="toggle-form-btn">+ Создать агента</button>
+                    
+                    <div id="createAgentForm" class="create-agent-form" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Имя</label>
+                            <input type="text" id="agentName" class="form-input" placeholder="Agent1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Роль</label>
+                            <input type="text" id="agentRole" class="form-input" placeholder="Assistant">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Модель</label>
+                            <input type="text" id="agentModel" class="form-input" placeholder="meta/llama-3.1-8b-instruct">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Base URL</label>
+                            <input type="text" id="agentBaseUrl" class="form-input" placeholder="https://integrate.api.nvidia.com/v1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API Key</label>
+                            <input type="password" id="agentApiKey" class="form-input" placeholder="nvapi-...">
+                        </div>
+                        <button id="createAgentBtn" class="create-btn">Создать</button>
+                    </div>
+                </div>
+
+                <!-- Memory Lessons Section -->
+                <div class="section">
+                    <div class="section-title">
+                        Уроки из памяти
+                        <button id="refreshMemoryBtn" class="refresh-btn">↻</button>
+                    </div>
+                    <div id="memoryLessons">
+                        <div class="empty-state">
+                            <div class="empty-state-text">Нет сохраненных уроков</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <button class="toggle-sidebar" onclick="toggleSidebar()" title="Settings">⚙️</button>
-    
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-title">Agent Settings</div>
-            <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
-        </div>
-        <div class="sidebar-content">
-            <div class="sidebar-section">
-                <h3>Add Agent</h3>
-                <div class="form-group">
-                    <label>Name *</label>
-                    <input type="text" id="agent-name" class="form-input" placeholder="e.g., Coder">
-                </div>
-                <div class="form-group">
-                    <label>Role *</label>
-                    <input type="text" id="agent-role" class="form-input" placeholder="e.g., You are the Nexus chief architect. Your task: break down complex problems into steps.">
-                    <div class="form-hint">Use English. Examples: "You are the Nexus chief architect", "Python developer who writes and executes code", "Web scraper specialist"</div>
-                </div>
-                <div class="form-group">
-                    <label>Model *</label>
-                    <select id="agent-model" class="form-input" onchange="handleModelSelect()">
-                        <option value="">-- Выберите модель --</option>
-                        <option value="meta/llama-3.1-8b-instruct">Llama 3.1 8B Instruct (быстрая)</option>
-                        <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (умная)</option>
-                        <option value="nvidia/nemotron-3-nano-30b-a3b">Nemotron 3 Nano 30B (сбалансированная)</option>
-                        <option value="custom">-- Своя модель --</option>
-                    </select>
-                    <input type="text" id="agent-model-custom" class="form-input" placeholder="Введите название модели" style="display:none;margin-top:8px;">
-                    <div class="form-hint">🚀 NVIDIA API: выберите модель выше и вставьте API ключ<br>🏠 Ollama: выберите "Своя модель" и введите llama3.1:8b, URL: http://localhost:11434</div>
-                </div>
-                <div class="form-group">
-                    <label>Base URL *</label>
-                    <select id="agent-url-select" class="form-input" onchange="handleUrlSelect()" style="margin-bottom:8px;">
-                        <option value="">-- Выберите провайдера --</option>
-                        <option value="https://integrate.api.nvidia.com/v1">NVIDIA API</option>
-                        <option value="http://localhost:11434">Ollama (локально)</option>
-                        <option value="custom-url">-- Свой URL --</option>
-                    </select>
-                    <input type="text" id="agent-url" class="form-input" placeholder="https://integrate.api.nvidia.com/v1">
-                    <div class="form-hint">NVIDIA: https://integrate.api.nvidia.com/v1 | Ollama: http://localhost:11434</div>
-                </div>
-                <div class="form-group">
-                    <label>API Key</label>
-                    <input type="password" id="agent-key" class="form-input" placeholder="nvapi-...">
-                    <div class="form-hint"><a href="https://build.nvidia.com" target="_blank">Get NVIDIA API Key</a>. Leave empty for Ollama</div>
-                </div>
-                <button onclick="addAgent()" id="add-agent-btn" class="btn-primary">Add Agent</button>
-                <div id="validation-result" class="validation-message"></div>
-            </div>
-            
-            <div class="sidebar-section">
-                <h3>Active Agents</h3>
-                <div id="agents-list"></div>
-            </div>
-            
-            <div class="sidebar-section">
-                <h3>Краткосрочная память</h3>
-                <div id="memory-display"></div>
-                <button onclick="loadMemory()" class="btn-primary" style="background:var(--bg-tertiary);color:var(--text-secondary);margin-top:12px;">Обновить</button>
-            </div>
-        </div>
-    </div>
 
-<script>
-const chatMessages = document.getElementById('chat-messages');
-let currentBase64Image = null;
-let activeStreamContainer = null;
+    <script>
+        // API Configuration
+        const API_BASE = '';
 
-// Auto-resize textarea
-function autoResize(textarea) {
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
-}
+        // State
+        let agents = [];
+        let currentEventSource = null;
+        let isProcessing = false;
 
-// Handle Enter key
-function handleKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        runTask();
-    }
-}
+        // DOM Elements
+        const chatContainer = document.getElementById('chatContainer');
+        const taskInput = document.getElementById('taskInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const agentSelect = document.getElementById('agentSelect');
+        const agentsList = document.getElementById('agentsList');
+        const memoryLessons = document.getElementById('memoryLessons');
+        const agentCountEl = document.getElementById('agentCount');
+        const memoryNodesEl = document.getElementById('memoryNodes');
+        const toggleCreateAgentBtn = document.getElementById('toggleCreateAgentBtn');
+        const createAgentForm = document.getElementById('createAgentForm');
+        const createAgentBtn = document.getElementById('createAgentBtn');
+        const refreshAgentsBtn = document.getElementById('refreshAgentsBtn');
+        const refreshMemoryBtn = document.getElementById('refreshMemoryBtn');
 
-// Handle model selection - show custom input if "custom" is selected
-function handleModelSelect() {
-    const modelSelect = document.getElementById('agent-model');
-    const customInput = document.getElementById('agent-model-custom');
-    
-    if (modelSelect.value === 'custom') {
-        customInput.style.display = 'block';
-        customInput.focus();
-    } else {
-        customInput.style.display = 'none';
-        customInput.value = '';
-    }
-}
-
-// Handle URL selection - show custom input if "custom-url" is selected
-function handleUrlSelect() {
-    const urlSelect = document.getElementById('agent-url-select');
-    const urlInput = document.getElementById('agent-url');
-    
-    if (urlSelect.value === 'custom-url') {
-        urlInput.style.display = 'block';
-        urlInput.value = '';
-        urlInput.placeholder = 'Введите ваш URL';
-        urlInput.focus();
-    } else if (urlSelect.value) {
-        urlInput.style.display = 'block';
-        urlInput.value = urlSelect.value;
-    } else {
-        urlInput.style.display = 'block';
-        urlInput.value = '';
-    }
-}
-
-// Format content with code blocks
-function formatContent(content) {
-    if (!content) return '';
-    let formatted = content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    
-    // Code blocks
-    formatted = formatted.replace(/```(\w*)\n?([\s\S]*?)```/g, '<div class="stream-code"><code>$2</code></div>');
-    
-    // Inline code
-    formatted = formatted.replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:12px;">$1</code>');
-    
-    // Line breaks (only outside code blocks)
-    formatted = formatted.replace(/(?<!<\/code>)\n(?!<div class="stream-code")/g, '<br>');
-    
-    return formatted;
-}
-
-// Add message to chat
-function addMessage(content, type = 'user') {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${type}`;
-    
-    const avatarDiv = document.createElement('div');
-    avatarDiv.className = 'message-avatar';
-    avatarDiv.textContent = type === 'user' ? '👤' : '🤖';
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'message-content';
-    contentDiv.innerHTML = formatContent(content);
-    
-    msgDiv.appendChild(avatarDiv);
-    msgDiv.appendChild(contentDiv);
-    chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Show typing indicator
-function showTypingIndicator() {
-    const indicatorDiv = document.createElement('div');
-    indicatorDiv.className = 'message agent';
-    indicatorDiv.id = 'typing-indicator';
-    indicatorDiv.innerHTML = `
-        <div class="message-avatar">🤖</div>
-        <div class="message-content">
-            <div class="typing-indicator">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>
-        </div>
-    `;
-    chatMessages.appendChild(indicatorDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Remove typing indicator
-function removeTypingIndicator() {
-    const indicator = document.getElementById('typing-indicator');
-    if (indicator) indicator.remove();
-}
-
-// Create stream container with sections
-function createStreamContainer() {
-    const container = document.createElement('div');
-    container.className = 'stream-container';
-    container.id = 'stream-container';
-    container.innerHTML = `
-        <div class="stream-header">
-            <div class="stream-status"></div>
-            <span id="stream-status-text">Инициализация...</span>
-        </div>
-        <div class="stream-section">
-            <div class="section-header thoughts" onclick="toggleSection('thoughts-content')">
-                <span class="section-icon">💭</span>
-                <span>Мысли агента</span>
-            </div>
-            <div class="section-content empty" id="thoughts-content">Ожидание мыслей...</div>
-        </div>
-        <div class="stream-section">
-            <div class="section-header actions" onclick="toggleSection('actions-content')">
-                <span class="section-icon">🛠️</span>
-                <span>Действия</span>
-            </div>
-            <div class="section-content empty" id="actions-content">Ожидание действий...</div>
-        </div>
-        <div class="stream-section">
-            <div class="section-header result" onclick="toggleSection('result-content')">
-                <span class="section-icon">✅</span>
-                <span>Результат</span>
-            </div>
-            <div class="section-content empty" id="result-content">Ожидание результата...</div>
-        </div>
-    `;
-    return container;
-}
-
-// Toggle section collapse
-function toggleSection(contentId) {
-    const content = document.getElementById(contentId);
-    if (content) {
-        content.classList.toggle('collapsed');
-    }
-}
-
-// Update stream status
-function updateStreamStatus(text) {
-    const statusText = document.getElementById('stream-status-text');
-    const statusDot = document.querySelector('.stream-status');
-    if (statusText) statusText.textContent = text;
-    if (statusDot && text.includes('✅')) {
-        statusDot.style.background = 'var(--success)';
-        statusDot.style.animation = 'none';
-    } else if (statusDot && text.includes('❌')) {
-        statusDot.style.background = 'var(--error)';
-        statusDot.style.animation = 'none';
-    }
-}
-
-// Append to specific section
-function appendToSection(sectionId, content) {
-    const section = document.getElementById(sectionId);
-    if (section) {
-        if (section.classList.contains('empty')) {
-            section.innerHTML = '';
-            section.classList.remove('empty');
-        }
-        section.innerHTML += formatContent(content);
-        section.scrollTop = section.scrollHeight;
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-}
-
-// Clear stream container
-function clearStream() {
-    const container = document.getElementById('stream-container');
-    if (container) container.remove();
-}
-
-// File handling
-function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) processFile(file);
-}
-
-function processFile(file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        currentBase64Image = e.target.result;
-        document.getElementById('file-preview-name').textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
-        document.getElementById('file-preview-container').style.display = 'block';
-    };
-    reader.readAsDataURL(file);
-}
-
-function removeFile() {
-    currentBase64Image = null;
-    document.getElementById('file-preview-container').style.display = 'none';
-    document.getElementById('file-input').value = '';
-}
-
-// Validate URL
-function isValidUrl(url) {
-    try {
-        new URL(url);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-// Add agent with validation
-async function addAgent() {
-    const nameInput = document.getElementById('agent-name');
-    const roleInput = document.getElementById('agent-role');
-    const modelSelect = document.getElementById('agent-model');
-    const modelCustomInput = document.getElementById('agent-model-custom');
-    const urlSelect = document.getElementById('agent-url-select');
-    const urlInput = document.getElementById('agent-url');
-    const keyInput = document.getElementById('agent-key');
-    
-    // Get actual model value (from select or custom input)
-    let modelValue = modelSelect.value;
-    if (modelValue === 'custom') {
-        modelValue = modelCustomInput.value.trim();
-    }
-    
-    // Get actual URL value (from select or input)
-    let urlValue = urlInput.value.trim();
-    
-    const data = {
-        name: nameInput.value.trim(),
-        role: roleInput.value.trim(),
-        model: modelValue,
-        base_url: urlValue,
-        api_key: keyInput.value.trim()
-    };
-    
-    const resultDiv = document.getElementById('validation-result');
-    const btn = document.getElementById('add-agent-btn');
-    
-    // Reset errors
-    [nameInput, roleInput, modelSelect, modelCustomInput, urlSelect, urlInput, keyInput].forEach(input => {
-        input.classList.remove('error');
-    });
-    resultDiv.style.display = 'none';
-    
-    // Validate fields
-    const errors = [];
-    
-    if (!data.name) {
-        nameInput.classList.add('error');
-        errors.push('• Agent name is required');
-    } else if (data.name.length < 2) {
-        nameInput.classList.add('error');
-        errors.push('• Name must be at least 2 characters');
-    }
-    
-    if (!data.role) {
-        roleInput.classList.add('error');
-        errors.push('• Роль обязательна');
-    }
-    
-    if (!data.model) {
-        if (modelSelect.value === 'custom') {
-            modelCustomInput.classList.add('error');
-        } else {
-            modelSelect.classList.add('error');
-        }
-        errors.push('• Модель обязательна');
-    }
-    
-    if (!data.base_url) {
-        urlInput.classList.add('error');
-        errors.push('• Base URL is required');
-    } else if (!isValidUrl(data.base_url)) {
-        urlInput.classList.add('error');
-        errors.push('• Неверный формат URL');
-    }
-    
-    if (data.base_url.includes('nvidia') && !data.api_key) {
-        keyInput.classList.add('error');
-        errors.push('• API Key is required for NVIDIA');
-    }
-    
-    if (errors.length > 0) {
-        resultDiv.style.display = 'block';
-        resultDiv.className = 'validation-message error';
-        resultDiv.innerHTML = '<strong>Validation Error:</strong><br>' + errors.join('<br>');
-        return;
-    }
-    
-    // Test connection
-    btn.disabled = true;
-    btn.textContent = '🔍 Testing connection...';
-    resultDiv.style.display = 'block';
-    resultDiv.className = 'validation-message info';
-    resultDiv.textContent = 'Testing API connection...';
-    
-    try {
-        const response = await fetch('/api/agents', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        const responseData = await response.json();
-        
-        if (response.ok) {
-            resultDiv.className = 'validation-message success';
-            resultDiv.innerHTML = '<strong>✅ Success!</strong><br>Agent "' + data.name + '" added and ready to work.';
-            
-            // Clear form
-            nameInput.value = '';
-            roleInput.value = '';
-            modelSelect.value = '';
-            modelCustomInput.value = '';
-            urlSelect.value = '';
-            urlInput.value = '';
-            keyInput.value = '';
-            
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
             loadAgents();
-            addMessage('✅ Agent "' + data.name + '" успешно добавлен', 'system');
-        } else {
-            throw new Error(responseData.error || 'Ошибка при создании агента');
-        }
-    } catch (error) {
-        resultDiv.className = 'validation-message error';
-        resultDiv.innerHTML = '<strong>❌ Error:</strong><br>' + error.message;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Add Agent';
-        setTimeout(() => {
-            resultDiv.style.display = 'none';
-        }, 10000);
-    }
-}
-
-// Load agents list
-let currentAgent = null;
-
-async function loadAgents() {
-    try {
-        const response = await fetch('/api/agents');
-        const agents = await response.json();
-        
-        const listDiv = document.getElementById('agents-list');
-        const countSpan = document.getElementById('active-agents-count');
-        
-        if (!agents || agents.length === 0) {
-            listDiv.innerHTML = '<div style="color:var(--text-tertiary);padding:16px;text-align:center;font-size:13px;">Нет активных агентов</div>';
-            countSpan.textContent = '0 агентов';
-            return;
-        }
-        
-        countSpan.textContent = agents.length + ' агент(ов)';
-        listDiv.innerHTML = '';
-        
-        agents.forEach(agentName => {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'agent-item';
-            itemDiv.style.cursor = 'pointer';
-            itemDiv.onclick = () => selectAgent(agentName, itemDiv);
-            itemDiv.innerHTML = `
-                <div class="agent-info">
-                    <div class="agent-icon">🤖</div>
-                    <div>
-                        <div class="agent-name">${escapeHtml(agentName)}</div>
-                        <div class="agent-model">Active</div>
-                    </div>
-                </div>
-                <div class="status-indicator"></div>
-            `;
-            listDiv.appendChild(itemDiv);
-            
-            // Select first agent by default
-            if (currentAgent === null) {
-                selectAgent(agentName, itemDiv);
-            }
+            loadMemory();
+            setupEventListeners();
+            autoResizeTextarea();
         });
-    } catch (error) {
-        console.error('Error loading agents:', error);
-        document.getElementById('agents-list').innerHTML = '<div style="color:var(--error);padding:12px;text-align:center;">Ошибка загрузки</div>';
-    }
-}
 
-function selectAgent(agentName, element) {
-    currentAgent = agentName;
-    // Remove selection from all items
-    document.querySelectorAll('.agent-item').forEach(el => {
-        el.style.borderColor = 'var(--border-color)';
-        el.style.background = 'var(--bg-secondary)';
-    });
-    // Highlight selected
-    element.style.borderColor = 'var(--accent-primary)';
-    element.style.background = 'var(--accent-light)';
-    console.log('Selected agent:', currentAgent);
-}
-
-// Escape HTML
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Run task with streaming
-async function runTask() {
-    const taskInput = document.getElementById('task-input');
-    const task = taskInput.value.trim();
-    const btn = document.getElementById('run-btn');
-    
-    if (!task) {
-        addMessage('⚠️ Пожалуйста, введите задачу', 'system');
-        return;
-    }
-    
-    // Check if agent is selected
-    if (!currentAgent) {
-        addMessage('⚠️ Сначала выберите агента из списка (кликните по имени)', 'system');
-        toggleSidebar();
-        return;
-    }
-    
-    // Add user message
-    addMessage(task, 'user');
-    taskInput.value = '';
-    autoResize(taskInput);
-    btn.disabled = true;
-    
-    // Show typing indicator
-    showTypingIndicator();
-    
-    try {
-        const response = await fetch('/api/chat/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                task: task,
-                agent: currentAgent,
-                image: currentBase64Image
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        removeTypingIndicator();
-        
-        // Create stream container
-        const streamContainer = createStreamContainer();
-        chatMessages.appendChild(streamContainer);
-        activeStreamContainer = streamContainer;
-        
-        // Scroll to bottom to show stream
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-        
-        // Read stream
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const eventData = JSON.parse(line.slice(6));
-                        
-                        if (eventData.type === 'status') {
-                            updateStreamStatus(eventData.content);
-                        } else if (eventData.type === 'message') {
-                            // Определяем секцию по контексту или добавляем в результат по умолчанию
-                            appendToSection('result-content', eventData.content);
-                        } else if (eventData.type === 'thought') {
-                            appendToSection('thoughts-content', eventData.content);
-                        } else if (eventData.type === 'action') {
-                            appendToSection('actions-content', eventData.content);
-                        } else if (eventData.type === 'error') {
-                            updateStreamStatus('❌ Error');
-                            appendToSection('result-content', 'Ошибка: ' + eventData.content);
-                        } else if (eventData.type === 'done') {
-                            updateStreamStatus('✅ Завершено');
-                        }
-                    } catch (parseError) {
-                        console.warn('Failed to parse SSE data:', parseError);
-                    }
+        // Event Listeners
+        function setupEventListeners() {
+            sendBtn.addEventListener('click', sendMessage);
+            taskInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
                 }
+            });
+            taskInput.addEventListener('input', autoResizeTextarea);
+            toggleCreateAgentBtn.addEventListener('click', toggleCreateAgentForm);
+            createAgentBtn.addEventListener('click', createAgent);
+            refreshAgentsBtn.addEventListener('click', loadAgents);
+            refreshMemoryBtn.addEventListener('click', loadMemory);
+        }
+
+        // Auto-resize textarea
+        function autoResizeTextarea() {
+            taskInput.style.height = 'auto';
+            taskInput.style.height = Math.min(taskInput.scrollHeight, 150) + 'px';
+        }
+
+        // Toggle create agent form
+        function toggleCreateAgentForm() {
+            const isHidden = createAgentForm.style.display === 'none';
+            createAgentForm.style.display = isHidden ? 'block' : 'none';
+            toggleCreateAgentBtn.textContent = isHidden ? '− Скрыть форму' : '+ Создать агента';
+        }
+
+        // Load agents
+        async function loadAgents() {
+            try {
+                const response = await fetch(`${API_BASE}/api/agents`);
+                const data = await response.json();
+                
+                agents = data.agents || [];
+                updateAgentSelect();
+                updateAgentsList();
+                agentCountEl.textContent = agents.length;
+            } catch (error) {
+                console.error('Failed to load agents:', error);
+                addSystemMessage('Ошибка загрузки агентов');
             }
         }
-        
-    } catch (error) {
-        removeTypingIndicator();
-        clearStream();
-        addMessage('❌ ' + error.message, 'system');
-    } finally {
-        btn.disabled = false;
-        removeFile();
-        loadMemory();
-    }
-}
 
-// Load memory
-async function loadMemory() {
-    try {
-        const response = await fetch('/api/memory');
-        const data = await response.json();
-        
-        const memoryDiv = document.getElementById('memory-display');
-        
-        if (data.short_term && data.short_term.length > 0) {
-            let html = '';
-            data.short_term.slice(-5).reverse().forEach(memory => {
-                const content = memory.content.length > 100 
-                    ? memory.content.substring(0, 100) + '...' 
-                    : memory.content;
-                html += `<div class="memory-item"><strong>${escapeHtml(memory.role || 'System')}</strong>: ${escapeHtml(content)}</div>`;
+        // Update agent select dropdown
+        function updateAgentSelect() {
+            agentSelect.innerHTML = '';
+            
+            if (agents.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Нет доступных агентов';
+                agentSelect.appendChild(option);
+                return;
+            }
+
+            agents.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent;
+                option.textContent = agent;
+                agentSelect.appendChild(option);
             });
-            memoryDiv.innerHTML = html;
-        } else {
-            memoryDiv.innerHTML = '<div style="color:var(--text-tertiary);padding:16px;text-align:center;font-size:13px;">Memory is empty</div>';
+
+            // Select first agent by default
+            if (agents.length > 0 && !agentSelect.value) {
+                agentSelect.value = agents[0];
+            }
         }
-    } catch (error) {
-        console.error('Error loading memory:', error);
-        document.getElementById('memory-display').innerHTML = '<div style="color:var(--error);padding:12px;text-align:center;">Ошибка загрузки</div>';
-    }
-}
 
-// Toggle sidebar
-function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
-}
+        // Update agents list in sidebar
+        function updateAgentsList() {
+            if (agents.length === 0) {
+                agentsList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-text">Нет активных агентов</div>
+                    </div>
+                `;
+                return;
+            }
 
-// Initialize on load
-document.addEventListener('DOMContentLoaded', function() {
-    loadAgents();
-    loadMemory();
-});
-</script>
+            agentsList.innerHTML = agents.map(agent => `
+                <div class="agent-card">
+                    <div class="agent-card-header">
+                        <div class="agent-name">${escapeHtml(agent)}</div>
+                        <div class="agent-status"></div>
+                    </div>
+                    <div class="agent-model">Готов к работе</div>
+                </div>
+            `).join('');
+        }
+
+        // Load memory
+        async function loadMemory() {
+            try {
+                const response = await fetch(`${API_BASE}/api/memory`);
+                const data = await response.json();
+                
+                memoryNodesEl.textContent = data.graph_nodes || 0;
+                updateMemoryLessons(data.lessons || []);
+            } catch (error) {
+                console.error('Failed to load memory:', error);
+            }
+        }
+
+        // Update memory lessons
+        function updateMemoryLessons(lessons) {
+            if (lessons.length === 0) {
+                memoryLessons.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-text">Нет сохраненных уроков</div>
+                    </div>
+                `;
+                return;
+            }
+
+            memoryLessons.innerHTML = lessons.map(lesson => `
+                <div class="lesson-card">
+                    <div class="lesson-keyword">${escapeHtml(lesson.keyword)}</div>
+                    <div class="lesson-text">${escapeHtml(lesson.text)}</div>
+                    <div class="lesson-count">Частота: ${lesson.count}</div>
+                </div>
+            `).join('');
+        }
+
+        // Create agent
+        async function createAgent() {
+            const name = document.getElementById('agentName').value.trim();
+            const role = document.getElementById('agentRole').value.trim();
+            const model = document.getElementById('agentModel').value.trim();
+            const baseUrl = document.getElementById('agentBaseUrl').value.trim();
+            const apiKey = document.getElementById('agentApiKey').value.trim();
+
+            if (!name) {
+                alert('Введите имя агента');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/agents`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name,
+                        role: role || 'Assistant',
+                        model: model || 'meta/llama-3.1-8b-instruct',
+                        base_url: baseUrl || 'https://integrate.api.nvidia.com/v1',
+                        api_key: apiKey || 'skip'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addSystemMessage(`Агент "${name}" успешно создан`);
+                    toggleCreateAgentForm();
+                    loadAgents();
+                    
+                    // Clear form
+                    document.getElementById('agentName').value = '';
+                    document.getElementById('agentRole').value = '';
+                    document.getElementById('agentModel').value = '';
+                    document.getElementById('agentBaseUrl').value = '';
+                    document.getElementById('agentApiKey').value = '';
+                } else {
+                    alert(data.error || 'Ошибка создания агента');
+                }
+            } catch (error) {
+                console.error('Failed to create agent:', error);
+                alert('Ошибка создания агента');
+            }
+        }
+
+        // Send message
+        function sendMessage() {
+            const task = taskInput.value.trim();
+            const agent = agentSelect.value;
+
+            if (!task || isProcessing) return;
+
+            if (!agent) {
+                alert('Выберите или создайте агента');
+                return;
+            }
+
+            // Add user message
+            addUserMessage(task);
+            taskInput.value = '';
+            autoResizeTextarea();
+
+            // Start streaming
+            startStreaming(task, agent);
+        }
+
+        // Start SSE streaming
+        function startStreaming(task, agent) {
+            isProcessing = true;
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Выполнение...';
+
+            // Add typing indicator
+            const typingId = addTypingIndicator();
+
+            const eventSource = new EventSource(`${API_BASE}/api/chat/stream?task=${encodeURIComponent(task)}&agent=${encodeURIComponent(agent)}`);
+
+            currentEventSource = eventSource;
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.done) {
+                        eventSource.close();
+                        removeTypingIndicator(typingId);
+                        isProcessing = false;
+                        sendBtn.disabled = false;
+                        sendBtn.textContent = 'Отправить';
+                        loadMemory(); // Refresh memory after completion
+                        return;
+                    }
+
+                    removeTypingIndicator(typingId);
+
+                    if (data.type === 'thought') {
+                        addProcessMessage('thought', data.content);
+                    } else if (data.type === 'action') {
+                        addProcessMessage('action', data.content);
+                    } else if (data.type === 'observation') {
+                        addProcessMessage('observation', data.content);
+                    } else if (data.type === 'message') {
+                        addAssistantMessage(data.content);
+                    } else if (data.type === 'error') {
+                        addProcessMessage('error', data.content);
+                        eventSource.close();
+                        isProcessing = false;
+                        sendBtn.disabled = false;
+                        sendBtn.textContent = 'Отправить';
+                    }
+                } catch (error) {
+                    console.error('Failed to parse SSE data:', error);
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE Error:', error);
+                eventSource.close();
+                removeTypingIndicator(typingId);
+                isProcessing = false;
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Отправить';
+                addSystemMessage('Ошибка соединения с сервером');
+            };
+        }
+
+        // Add user message
+        function addUserMessage(content) {
+            clearEmptyState();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message user';
+            messageDiv.innerHTML = `
+                <div class="message-content">${escapeHtml(content)}</div>
+            `;
+            chatContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // Add assistant message
+        function addAssistantMessage(content) {
+            clearEmptyState();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            
+            // Parse markdown
+            const htmlContent = marked.parse(content);
+            messageDiv.innerHTML = `<div class="message-content">${htmlContent}</div>`;
+            
+            chatContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // Add process message (thought, action, observation)
+        function addProcessMessage(type, content) {
+            clearEmptyState();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message process';
+            
+            let icon = '💭';
+            let label = 'Мысль';
+            let colorClass = 'process-thought';
+            
+            if (type === 'action') {
+                icon = '⚡';
+                label = 'Действие';
+                colorClass = 'process-action';
+            } else if (type === 'observation') {
+                icon = '👁️';
+                label = 'Наблюдение';
+                colorClass = 'process-observation';
+            } else if (type === 'error') {
+                icon = '❌';
+                label = 'Ошибка';
+                colorClass = 'process-error';
+            }
+
+            messageDiv.innerHTML = `
+                <div class="${colorClass}">
+                    <strong>${icon} ${label}:</strong><br>
+                    ${escapeHtml(content)}
+                </div>
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // Add system message
+        function addSystemMessage(content) {
+            clearEmptyState();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.textContent = content;
+            chatContainer.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // Add typing indicator
+        function addTypingIndicator() {
+            clearEmptyState();
+            
+            const id = 'typing-' + Date.now();
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = id;
+            messageDiv.innerHTML = `
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            chatContainer.appendChild(messageDiv);
+            scrollToBottom();
+            return id;
+        }
+
+        // Remove typing indicator
+        function removeTypingIndicator(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.remove();
+            }
+        }
+
+        // Clear empty state
+        function clearEmptyState() {
+            const emptyState = chatContainer.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+        }
+
+        // Scroll to bottom
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
 </body>
 </html>
