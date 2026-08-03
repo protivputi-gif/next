@@ -1,34 +1,62 @@
 ```
 # Database files
 *.db
-
-# Environment files
-.env
-.env.local
-*.env.*
+nexus_memory.db
 
 # Logs and temporary files
 *.log
 *.tmp
-*.swp
+*.temp
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# Cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pycache/
 
 # Dependencies
 node_modules/
-.venv/
 venv/
-__pycache__/
-*.egg-info/
+.venv/
+.npm/
+.yarn/
 
-# Build artifacts
-dist/
-build/
-target/
-
-# Editors
-.vscode/
-.idea/
-
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Icon?
+.directory
+.Trashes
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Distribution / packaging
+dist/
+build/
+*.egg
+*.egg-info/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.tox/
 ```
